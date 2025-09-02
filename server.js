@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const { shopifyApi, LATEST_API_VERSION } = require('@shopify/shopify-api');
+const { shopifyApi, LATEST_API_VERSION, ApiVersion } = require('@shopify/shopify-api');
 const { restResources } = require('@shopify/shopify-api/rest/admin/2023-10');
 const Database = require('./database');
 
@@ -8,25 +8,41 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
-// Initialize Shopify API
+// Initialize Shopify API with proper adapter
 const shopify = shopifyApi({
   apiKey: process.env.SHOPIFY_API_KEY,
   apiSecretKey: process.env.SHOPIFY_API_SECRET,
   scopes: ['read_products', 'write_products', 'read_script_tags', 'write_script_tags'],
-  hostName: process.env.HOST,
-  apiVersion: LATEST_API_VERSION,
-  isEmbeddedApp: true,
+  hostName: process.env.HOST?.replace('https://', '') || 'localhost',
+  hostScheme: 'https',
+  apiVersion: ApiVersion.October23,
+  isEmbeddedApp: false, // Changed to false for easier deployment
   restResources,
 });
 
 // Initialize database
 const db = new Database();
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
 // Shopify OAuth
 app.get('/auth', async (req, res) => {
   try {
+    const shop = req.query.shop;
+    if (!shop) {
+      return res.status(400).send('Missing shop parameter');
+    }
+
+    const sanitizedShop = shopify.utils.sanitizeShop(shop, true);
+    if (!sanitizedShop) {
+      return res.status(400).send('Invalid shop parameter');
+    }
+
     await shopify.auth.begin({
-      shop: shopify.utils.sanitizeShop(req.query.shop, true),
+      shop: sanitizedShop,
       callbackPath: '/auth/callback',
       isOnline: false,
       rawRequest: req,
@@ -34,7 +50,7 @@ app.get('/auth', async (req, res) => {
     });
   } catch (error) {
     console.error('Auth error:', error);
-    res.status(500).send('Authentication failed');
+    res.status(500).send(`Authentication failed: ${error.message}`);
   }
 });
 
@@ -49,13 +65,17 @@ app.get('/auth/callback', async (req, res) => {
     const session = callback.session;
     await db.storeSession(session);
     
+    console.log('Session stored for shop:', session.shop);
+    
     // Install script tag
     await installScriptTag(session);
     
-    res.redirect(`/?shop=${session.shop}&host=${req.query.host}`);
+    // Redirect to app with success message
+    const redirectUrl = `/?shop=${session.shop}&installed=true`;
+    res.redirect(redirectUrl);
   } catch (error) {
     console.error('Callback error:', error);
-    res.status(500).send('Authentication callback failed');
+    res.status(500).send(`Authentication callback failed: ${error.message}`);
   }
 });
 
@@ -85,17 +105,40 @@ async function installScriptTag(session) {
         }
       });
       console.log('Script tag installed successfully');
+    } else {
+      console.log('Script tag already exists');
     }
   } catch (error) {
     console.error('Error installing script tag:', error);
+    // Don't throw - continue even if script tag installation fails
+  }
+}
+
+// Middleware to get session for API routes
+async function getSessionMiddleware(req, res, next) {
+  try {
+    const shop = req.query.shop || req.headers['x-shop-domain'];
+    if (!shop) {
+      return res.status(400).json({ error: 'Missing shop parameter' });
+    }
+    
+    const session = await db.getSession(shop);
+    if (!session) {
+      return res.status(401).json({ error: 'Shop not authenticated' });
+    }
+    
+    req.session = session;
+    next();
+  } catch (error) {
+    console.error('Session middleware error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 }
 
 // API Routes
-app.get('/api/products', async (req, res) => {
+app.get('/api/products', getSessionMiddleware, async (req, res) => {
   try {
-    const session = await db.getSession(req.query.shop);
-    const client = new shopify.clients.Rest({ session });
+    const client = new shopify.clients.Rest({ session: req.session });
     
     const products = await client.get({
       path: 'products',
@@ -111,7 +154,8 @@ app.get('/api/products', async (req, res) => {
 
 app.get('/api/addons/:productId', async (req, res) => {
   try {
-    const addons = await db.getAddons(req.params.productId);
+    const shop = req.query.shop || 'default';
+    const addons = await db.getAddons(req.params.productId, shop);
     res.json(addons);
   } catch (error) {
     console.error('Error fetching addons:', error);
@@ -121,14 +165,19 @@ app.get('/api/addons/:productId', async (req, res) => {
 
 app.post('/api/addons', async (req, res) => {
   try {
-    const { productId, name, price, type, required } = req.body;
+    const { productId, name, price, type, required, options } = req.body;
+    const shop = req.query.shop || req.body.shop || 'default';
+    
     const addon = await db.createAddon({
       productId,
       name,
       price: parseFloat(price),
       type,
-      required: required || false
+      required: required || false,
+      options: options || null,
+      shop
     });
+    
     res.json(addon);
   } catch (error) {
     console.error('Error creating addon:', error);
@@ -164,10 +213,19 @@ app.get('/', (req, res) => {
 // Serve the frontend script
 app.get('/product-addons.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript');
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.sendFile(__dirname + '/public/product-addons.js');
 });
 
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error('Unhandled error:', error);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Product Add-ons App running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Host: ${process.env.HOST || 'localhost'}`);
 });
