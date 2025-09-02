@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const { shopifyApi, LATEST_API_VERSION, ApiVersion } = require('@shopify/shopify-api');
+const { shopifyApi, LATEST_API_VERSION } = require('@shopify/shopify-api');
 const { restResources } = require('@shopify/shopify-api/rest/admin/2023-10');
 const Database = require('./database');
 
@@ -15,7 +15,7 @@ const shopify = shopifyApi({
   scopes: ['read_products', 'write_products', 'read_script_tags', 'write_script_tags'],
   hostName: process.env.HOST?.replace('https://', '') || 'localhost',
   hostScheme: 'https',
-  apiVersion: ApiVersion.October23,
+  apiVersion: LATEST_API_VERSION,
   isEmbeddedApp: false, // Changed to false for easier deployment
   restResources,
 });
