@@ -421,6 +421,7 @@
                 this.products = [];
                 this.addons = [];
                 this.shop = shop || 'default';
+                this.editingAddonId = null;
                 this.init();
             }
 
@@ -603,10 +604,25 @@
 
             toggleDropdownOptions(show) {
                 const container = document.getElementById('dropdown-options');
+                const priceField = document.getElementById('addon-price');
+                
                 container.style.display = show ? 'block' : 'none';
                 
-                if (show && !container.querySelector('.option-row')) {
-                    this.addDropdownOption();
+                if (show) {
+                    // For dropdowns, set base price to 0 since individual options have prices
+                    priceField.value = '0';
+                    priceField.readOnly = true;
+                    priceField.style.backgroundColor = '#f6f6f7';
+                    
+                    // Add first option if none exist
+                    if (!container.querySelector('.option-row')) {
+                        this.addDropdownOption();
+                    }
+                } else {
+                    // For checkboxes, allow price editing
+                    priceField.readOnly = false;
+                    priceField.style.backgroundColor = 'white';
+                    priceField.value = '';
                 }
             }
 
