@@ -44,6 +44,9 @@
     
     // Method 1: Look for product JSON in script tags (most reliable)
     const scripts = document.querySelectorAll('script[type="application/json"]');
+    //const pinfo = document.getElementsByTagName('product-info');
+
+    /*
     for (const script of scripts) {
       try {
         const data = JSON.parse(script.textContent);
@@ -55,7 +58,13 @@
       } catch (e) {
         // Continue searching
       }
-    }
+    }*/
+      const pinfo = document.getElementsByTagName('product-info');
+
+        const tproductId = pinfo[0].dataset.productId;
+        if(tproductId) { productId = tproductId}
+        log('Found product ID from product info tag:', productId);
+
     
     // Method 2: Look for global product object
     if (!productId && typeof window.product !== 'undefined') {
