@@ -92,6 +92,25 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Debug endpoint to check sessions (remove in production)
+app.get('/debug/sessions', async (req, res) => {
+  try {
+    const shop = req.query.shop;
+    if (shop) {
+      const session = await db.getSession(shop);
+      res.json({ 
+        shop, 
+        hasSession: !!session, 
+        sessionData: session ? { shop: session.shop, hasToken: !!session.accessToken } : null 
+      });
+    } else {
+      res.json({ error: 'Provide ?shop=yourstore.myshopify.com' });
+    }
+  } catch (error) {
+    res.json({ error: error.message });
+  }
+});
+
 // Shopify OAuth start
 app.get('/auth', async (req, res) => {
   try {
