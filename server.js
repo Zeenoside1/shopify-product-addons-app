@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
-const Database = require('./database-postgres'); // Use the new hybrid database
+const Database = require('./database-debug'); // Use debug database
 
 const app = express();
 app.use(express.json());
