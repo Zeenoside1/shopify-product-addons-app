@@ -4,235 +4,236 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Product Add-ons Manager</title>
+    
+    <!-- Shopify Polaris CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/@shopify/polaris@12.0.0/build/esm/styles.css">
+    
+    <!-- App Bridge 4 -->
+    <script src="https://unpkg.com/@shopify/app-bridge@4"></script>
+    
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
+            margin: 0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: #f6f6f7;
-            color: #202223;
-            line-height: 1.5;
         }
 
-        .container {
+        .app-container {
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
         }
 
-        .header {
+        .polaris-card {
             background: white;
-            padding: 20px;
             border-radius: 8px;
-            margin-bottom: 20px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
         }
 
-        .header h1 {
-            font-size: 24px;
+        .polaris-card-header {
+            padding: 20px 20px 0;
+            border-bottom: 1px solid #e1e3e5;
+            margin-bottom: 20px;
+        }
+
+        .polaris-card-content {
+            padding: 0 20px 20px;
+        }
+
+        .polaris-heading {
+            font-size: 20px;
             font-weight: 600;
+            margin: 0 0 8px 0;
             color: #202223;
         }
 
-        .header p {
+        .polaris-subheading {
+            font-size: 14px;
             color: #6d7175;
-            margin-top: 5px;
+            margin: 0;
         }
 
-        .main-content {
+        .polaris-layout {
             display: grid;
             grid-template-columns: 300px 1fr;
             gap: 20px;
         }
 
-        .sidebar {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            height: fit-content;
-        }
-
-        .content {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        .section-title {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 15px;
-            color: #202223;
-        }
-
-        .product-list {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .product-item {
-            padding: 12px;
-            border: 1px solid #e1e3e5;
-            border-radius: 4px;
-            margin-bottom: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .product-item:hover {
-            border-color: #008060;
-            background: #f6fffc;
-        }
-
-        .product-item.active {
-            border-color: #008060;
-            background: #f6fffc;
-        }
-
-        .product-title {
-            font-weight: 500;
-            margin-bottom: 4px;
-        }
-
-        .product-price {
-            color: #6d7175;
-            font-size: 14px;
-        }
-
-        .addon-form {
-            border: 1px solid #e1e3e5;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            background: #f6f6f7;
-        }
-
-        .form-group {
-            margin-bottom: 16px;
-        }
-
-        .form-label {
-            display: block;
-            font-weight: 500;
-            margin-bottom: 6px;
-            color: #202223;
-        }
-
-        .form-input, .form-select {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            font-size: 14px;
-            transition: border-color 0.2s;
-        }
-
-        .form-input:focus, .form-select:focus {
-            outline: none;
-            border-color: #008060;
-            box-shadow: 0 0 0 3px rgba(0, 128, 96, 0.1);
-        }
-
-        .form-checkbox {
-            margin-right: 8px;
-        }
-
-        .button {
-            padding: 12px 16px;
-            border: none;
-            border-radius: 4px;
-            font-size: 14px;
+        .polaris-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
             font-weight: 500;
             cursor: pointer;
             transition: all 0.2s;
+            text-decoration: none;
+            border: 1px solid transparent;
         }
 
-        .button-primary {
+        .polaris-button-primary {
             background: #008060;
             color: white;
+            border-color: #008060;
         }
 
-        .button-primary:hover {
-            background: #006b52;
+        .polaris-button-primary:hover {
+            background: #005a46;
+            border-color: #005a46;
         }
 
-        .button-secondary {
+        .polaris-button-secondary {
             background: #f6f6f7;
             color: #202223;
-            border: 1px solid #d1d5db;
+            border-color: #c9cccf;
         }
 
-        .button-secondary:hover {
-            background: #f1f1f1;
+        .polaris-button-secondary:hover {
+            background: #f1f2f3;
         }
 
-        .button-danger {
+        .polaris-button-destructive {
             background: #d72c0d;
             color: white;
+            border-color: #d72c0d;
         }
 
-        .button-danger:hover {
+        .polaris-button-destructive:hover {
             background: #b52d0d;
         }
 
-        .addon-list {
-            margin-top: 20px;
+        .polaris-form-group {
+            margin-bottom: 16px;
         }
 
-        .addon-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 16px;
-            border: 1px solid #e1e3e5;
-            border-radius: 4px;
-            margin-bottom: 8px;
+        .polaris-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 4px;
+            color: #202223;
+        }
+
+        .polaris-text-field {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #c9cccf;
+            border-radius: 6px;
+            font-size: 13px;
             background: white;
         }
 
-        .addon-info h4 {
-            margin-bottom: 4px;
+        .polaris-text-field:focus {
+            outline: none;
+            border-color: #008060;
+            box-shadow: 0 0 0 1px #008060;
+        }
+
+        .polaris-select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #c9cccf;
+            border-radius: 6px;
+            font-size: 13px;
+            background: white;
+        }
+
+        .polaris-resource-item {
+            padding: 12px;
+            border: 1px solid #e1e3e5;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: white;
+        }
+
+        .polaris-resource-item:hover {
+            border-color: #008060;
+            box-shadow: 0 0 0 1px #008060;
+        }
+
+        .polaris-resource-item.selected {
+            border-color: #008060;
+            box-shadow: 0 0 0 1px #008060;
+            background: #f6fffc;
+        }
+
+        .polaris-resource-item h3 {
+            margin: 0 0 4px 0;
+            font-size: 14px;
             font-weight: 500;
         }
 
-        .addon-details {
-            font-size: 14px;
+        .polaris-resource-item p {
+            margin: 0;
+            font-size: 12px;
             color: #6d7175;
         }
 
-        .addon-actions {
+        .polaris-banner {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            border-left: 4px solid;
+        }
+
+        .polaris-banner-success {
+            background: #f0fdf4;
+            border-left-color: #16a34a;
+            color: #15803d;
+        }
+
+        .polaris-banner-critical {
+            background: #fef2f2;
+            border-left-color: #dc2626;
+            color: #dc2626;
+        }
+
+        .polaris-stack {
             display: flex;
+            align-items: center;
             gap: 8px;
         }
 
-        .loading {
-            text-align: center;
-            padding: 40px;
+        .polaris-stack-vertical {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .polaris-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+            background: #f1f2f3;
             color: #6d7175;
         }
 
-        .error {
-            background: #fef2f2;
-            border: 1px solid #fecaca;
-            color: #dc2626;
-            padding: 12px;
-            border-radius: 4px;
-            margin-bottom: 16px;
+        .polaris-badge-success {
+            background: #d1fae5;
+            color: #065f46;
         }
 
-        .success {
-            background: #f0fdf4;
-            border: 1px solid #bbf7d0;
-            color: #16a34a;
-            padding: 12px;
-            border-radius: 4px;
-            margin-bottom: 16px;
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #c9cccf;
+            border-top: 2px solid #008060;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
         .empty-state {
@@ -244,83 +245,153 @@
         .empty-state h3 {
             margin-bottom: 8px;
             color: #202223;
+            font-size: 16px;
+        }
+
+        .addon-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 16px;
+            border: 1px solid #e1e3e5;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            background: white;
+        }
+
+        .addon-info h4 {
+            margin: 0 0 4px 0;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .addon-details {
+            font-size: 12px;
+            color: #6d7175;
+        }
+
+        .addon-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .option-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            align-items: center;
+        }
+
+        .option-row input[type="text"] {
+            flex: 1;
+        }
+
+        .option-row input[type="number"] {
+            width: 100px;
         }
 
         @media (max-width: 768px) {
-            .main-content {
+            .polaris-layout {
                 grid-template-columns: 1fr;
             }
             
-            .container {
+            .app-container {
                 padding: 10px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Product Add-ons Manager</h1>
-            <p>Manage price-modifying options for your products</p>
+    <div class="app-container">
+        <!-- App Bridge will embed this in Shopify admin -->
+        
+        <div class="polaris-card">
+            <div class="polaris-card-header">
+                <h1 class="polaris-heading">Product Add-ons Manager</h1>
+                <p class="polaris-subheading">Manage price-modifying options for your products</p>
+            </div>
         </div>
 
-        <div class="main-content">
-            <div class="sidebar">
-                <h3 class="section-title">Products</h3>
-                <div id="product-list" class="product-list">
-                    <div class="loading">Loading products...</div>
+        <div class="polaris-layout">
+            <div>
+                <div class="polaris-card">
+                    <div class="polaris-card-header">
+                        <h2 class="polaris-heading" style="font-size: 16px;">Products</h2>
+                    </div>
+                    <div class="polaris-card-content">
+                        <div id="product-list">
+                            <div class="loading-spinner"></div> Loading products...
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="content">
-                <div id="no-selection" class="empty-state">
-                    <h3>Select a product</h3>
-                    <p>Choose a product from the sidebar to manage its add-ons</p>
+            <div>
+                <div id="no-selection" class="polaris-card">
+                    <div class="polaris-card-content">
+                        <div class="empty-state">
+                            <h3>Select a product</h3>
+                            <p>Choose a product from the sidebar to manage its add-ons</p>
+                        </div>
+                    </div>
                 </div>
 
                 <div id="product-details" style="display: none;">
                     <div id="messages"></div>
                     
-                    <h3 class="section-title">Add New Add-on</h3>
-                    <form id="addon-form" class="addon-form">
-                        <div class="form-group">
-                            <label class="form-label" for="addon-name">Add-on Name</label>
-                            <input type="text" id="addon-name" class="form-input" placeholder="e.g., Premium Support" required>
+                    <div class="polaris-card">
+                        <div class="polaris-card-header">
+                            <h3 class="polaris-heading" style="font-size: 16px;">Add New Add-on</h3>
                         </div>
+                        <div class="polaris-card-content">
+                            <form id="addon-form" class="polaris-stack-vertical">
+                                <div class="polaris-form-group">
+                                    <label class="polaris-label" for="addon-name">Add-on Name</label>
+                                    <input type="text" id="addon-name" class="polaris-text-field" placeholder="e.g., Premium Support" required>
+                                </div>
 
-                        <div class="form-group">
-                            <label class="form-label" for="addon-price">Price (£)</label>
-                            <input type="number" id="addon-price" class="form-input" step="0.01" min="0" placeholder="0.00" required>
+                                <div class="polaris-form-group">
+                                    <label class="polaris-label" for="addon-price">Price (£)</label>
+                                    <input type="number" id="addon-price" class="polaris-text-field" step="0.01" min="0" placeholder="0.00" required>
+                                </div>
+
+                                <div class="polaris-form-group">
+                                    <label class="polaris-label" for="addon-type">Type</label>
+                                    <select id="addon-type" class="polaris-select" required>
+                                        <option value="">Select type</option>
+                                        <option value="checkbox">Checkbox (On/Off)</option>
+                                        <option value="dropdown">Dropdown (Multiple Options)</option>
+                                    </select>
+                                </div>
+
+                                <div id="dropdown-options" style="display: none;">
+                                    <label class="polaris-label">Dropdown Options</label>
+                                    <div id="options-container"></div>
+                                    <button type="button" id="add-option" class="polaris-button polaris-button-secondary">Add Option</button>
+                                </div>
+
+                                <div class="polaris-form-group">
+                                    <label class="polaris-stack">
+                                        <input type="checkbox" id="addon-required">
+                                        <span>Required (automatically selected)</span>
+                                    </label>
+                                </div>
+
+                                <button type="submit" class="polaris-button polaris-button-primary">Create Add-on</button>
+                            </form>
                         </div>
+                    </div>
 
-                        <div class="form-group">
-                            <label class="form-label" for="addon-type">Type</label>
-                            <select id="addon-type" class="form-select" required>
-                                <option value="">Select type</option>
-                                <option value="checkbox">Checkbox (On/Off)</option>
-                                <option value="dropdown">Dropdown (Multiple Options)</option>
-                            </select>
+                    <div class="polaris-card">
+                        <div class="polaris-card-header">
+                            <h3 class="polaris-heading" style="font-size: 16px;">Existing Add-ons</h3>
                         </div>
-
-                        <div id="dropdown-options" style="display: none;">
-                            <label class="form-label">Dropdown Options</label>
-                            <div id="options-container"></div>
-                            <button type="button" id="add-option" class="button button-secondary">Add Option</button>
+                        <div class="polaris-card-content">
+                            <div id="addon-list">
+                                <div class="loading-spinner"></div> Loading add-ons...
+                            </div>
                         </div>
-
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="addon-required" class="form-checkbox">
-                                Required (automatically selected)
-                            </label>
-                        </div>
-
-                        <button type="submit" class="button button-primary">Create Add-on</button>
-                    </form>
-
-                    <h3 class="section-title">Existing Add-ons</h3>
-                    <div id="addon-list" class="addon-list">
-                        <div class="loading">Loading add-ons...</div>
                     </div>
                 </div>
             </div>
@@ -328,11 +399,28 @@
     </div>
 
     <script>
+        // Initialize App Bridge
+        let app;
+        const urlParams = new URLSearchParams(window.location.search);
+        const shop = urlParams.get('shop');
+        const host = urlParams.get('host');
+
+        if (shop && window.shopifyAppBridge) {
+            app = window.shopifyAppBridge.createApp({
+                apiKey: 'YOUR_API_KEY', // This will be replaced dynamically
+                host: host,
+                forceRedirect: true
+            });
+            
+            console.log('App Bridge initialized for shop:', shop);
+        }
+
         class ProductAddonManager {
             constructor() {
                 this.currentProductId = null;
                 this.products = [];
                 this.addons = [];
+                this.shop = shop || 'default';
                 this.init();
             }
 
@@ -342,18 +430,15 @@
             }
 
             bindEvents() {
-                // Form submission
                 document.getElementById('addon-form').addEventListener('submit', (e) => {
                     e.preventDefault();
                     this.createAddon();
                 });
 
-                // Type change
                 document.getElementById('addon-type').addEventListener('change', (e) => {
                     this.toggleDropdownOptions(e.target.value === 'dropdown');
                 });
 
-                // Add option button
                 document.getElementById('add-option').addEventListener('click', () => {
                     this.addDropdownOption();
                 });
@@ -361,13 +446,19 @@
 
             async loadProducts() {
                 try {
-                    const response = await fetch(`/api/products?shop=${this.getShopDomain()}`);
+                    const response = await fetch(`/api/products?shop=${this.shop}`);
+                    
+                    if (response.status === 401) {
+                        this.showError('Authentication required. Please reinstall the app.');
+                        return;
+                    }
+                    
                     const products = await response.json();
                     this.products = products;
                     this.renderProducts();
                 } catch (error) {
                     console.error('Error loading products:', error);
-                    this.showError('Failed to load products');
+                    this.showError('Failed to load products. Check console for details.');
                 }
             }
 
@@ -380,9 +471,9 @@
                 }
 
                 container.innerHTML = this.products.map(product => `
-                    <div class="product-item" onclick="manager.selectProduct('${product.id}')">
-                        <div class="product-title">${product.title}</div>
-                        <div class="product-price">£${product.variants[0]?.price || '0.00'}</div>
+                    <div class="polaris-resource-item" onclick="manager.selectProduct('${product.id}')">
+                        <h3>${product.title}</h3>
+                        <p>£${product.variants[0]?.price || '0.00'}</p>
                     </div>
                 `).join('');
             }
@@ -391,21 +482,20 @@
                 this.currentProductId = productId;
                 
                 // Update UI
-                document.querySelectorAll('.product-item').forEach(item => {
-                    item.classList.remove('active');
+                document.querySelectorAll('.polaris-resource-item').forEach(item => {
+                    item.classList.remove('selected');
                 });
-                event.target.closest('.product-item').classList.add('active');
+                event.target.closest('.polaris-resource-item').classList.add('selected');
                 
                 document.getElementById('no-selection').style.display = 'none';
                 document.getElementById('product-details').style.display = 'block';
                 
-                // Load add-ons for this product
                 await this.loadAddons();
             }
 
             async loadAddons() {
                 try {
-                    const response = await fetch(`/api/addons/${this.currentProductId}`);
+                    const response = await fetch(`/api/addons/${this.currentProductId}?shop=${this.shop}`);
                     const addons = await response.json();
                     this.addons = addons;
                     this.renderAddons();
@@ -428,13 +518,14 @@
                         <div class="addon-info">
                             <h4>${addon.name}</h4>
                             <div class="addon-details">
-                                ${addon.type.charAt(0).toUpperCase() + addon.type.slice(1)} • £${addon.price.toFixed(2)} 
-                                ${addon.required ? '• Required' : ''}
+                                <span class="polaris-badge">${addon.type}</span>
+                                £${addon.price.toFixed(2)}
+                                ${addon.required ? '<span class="polaris-badge polaris-badge-success">Required</span>' : ''}
                             </div>
                         </div>
                         <div class="addon-actions">
-                            <button class="button button-secondary" onclick="manager.editAddon(${addon.id})">Edit</button>
-                            <button class="button button-danger" onclick="manager.deleteAddon(${addon.id})">Delete</button>
+                            <button class="polaris-button polaris-button-secondary" onclick="manager.editAddon(${addon.id})">Edit</button>
+                            <button class="polaris-button polaris-button-destructive" onclick="manager.deleteAddon(${addon.id})">Delete</button>
                         </div>
                     </div>
                 `).join('');
@@ -444,13 +535,13 @@
                 const formData = this.getFormData();
                 
                 try {
-                    const response = await fetch('/api/addons', {
+                    const response = await fetch(`/api/addons?shop=${this.shop}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             ...formData,
                             productId: this.currentProductId,
-                            shop: this.getShopDomain()
+                            shop: this.shop
                         })
                     });
 
@@ -523,12 +614,11 @@
                 const container = document.getElementById('options-container');
                 const row = document.createElement('div');
                 row.className = 'option-row';
-                row.style.cssText = 'display: flex; gap: 8px; margin-bottom: 8px; align-items: center;';
                 
                 row.innerHTML = `
-                    <input type="text" class="form-input option-label" placeholder="Option name" style="flex: 1;">
-                    <input type="number" class="form-input option-price" placeholder="Price" step="0.01" min="0" style="width: 100px;">
-                    <button type="button" class="button button-danger" onclick="this.parentElement.remove()">×</button>
+                    <input type="text" class="polaris-text-field option-label" placeholder="Option name">
+                    <input type="number" class="polaris-text-field option-price" placeholder="Price" step="0.01" min="0">
+                    <button type="button" class="polaris-button polaris-button-destructive" onclick="this.parentElement.remove()">×</button>
                 `;
                 
                 container.appendChild(row);
@@ -543,7 +633,7 @@
             showMessage(message, type) {
                 const container = document.getElementById('messages');
                 const div = document.createElement('div');
-                div.className = type;
+                div.className = `polaris-banner polaris-banner-${type}`;
                 div.textContent = message;
                 container.innerHTML = '';
                 container.appendChild(div);
@@ -558,12 +648,7 @@
             }
 
             showError(message) {
-                this.showMessage(message, 'error');
-            }
-
-            getShopDomain() {
-                const params = new URLSearchParams(window.location.search);
-                return params.get('shop') || 'default';
+                this.showMessage(message, 'critical');
             }
 
             editAddon(addonId) {
