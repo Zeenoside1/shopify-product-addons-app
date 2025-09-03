@@ -145,7 +145,7 @@
       let shop = window.location.hostname;
       
       // If it's a custom domain, try to extract shop name or use the domain
-      if (!shop.includes('.myshopify.com')) {
+      /*if (!shop.includes('.myshopify.com')) {
         // For custom domains like 'paceworx.store', we need to convert to myshopify format
         // This might need to be configured per store, but let's try a common pattern
         if (shop.includes('.store')) {
@@ -154,7 +154,8 @@
           // Fallback - use the custom domain as-is and let the server handle it
           shop = shop + '.myshopify.com';
         }
-      }
+      }*/
+     shop = Shopify.shop
       
       const url = `${APP_HOST}/api/addons/${productId}?shop=${shop}`;
       
