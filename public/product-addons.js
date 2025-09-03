@@ -88,16 +88,31 @@
     try {
       log('Loading add-ons for product:', productId);
       
-      // Get shop domain
-      const shop = window.location.hostname.replace('.myshopify.com', '') + '.myshopify.com';
+      // Get shop domain - handle custom domains
+      let shop = window.location.hostname;
+      
+      // If it's a custom domain, try to extract shop name or use the domain
+      if (!shop.includes('.myshopify.com')) {
+        // For custom domains like 'paceworx.store', we need to convert to myshopify format
+        // This might need to be configured per store, but let's try a common pattern
+        if (shop.includes('.store')) {
+          shop = shop.replace('.store', '.myshopify.com');
+        } else {
+          // Fallback - use the custom domain as-is and let the server handle it
+          shop = shop + '.myshopify.com';
+        }
+      }
+      
       const url = `${APP_HOST}/api/addons/${productId}?shop=${shop}`;
       
       log('Fetching from:', url);
+      log('Using shop:', shop);
       
       const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'X-Shop-Domain': window.location.hostname
         }
       });
       

@@ -316,26 +316,205 @@ class Database {
     }
   }
 
-  // Add the rest of the methods (createAddon, getAddons, etc.) here
-  // For now, just basic stubs to prevent errors
+  // Add the full addon management methods
   async createAddon(addonData) {
-    console.log('🔧 createAddon called with:', addonData);
-    return { id: 1, ...addonData };
+    console.log('🔧 createAddon called with:', JSON.stringify(addonData, null, 2));
+    
+    // Validate required fields
+    if (!addonData.productId || !addonData.name || addonData.price === undefined) {
+      console.error('❌ Missing required addon fields:', {
+        hasProductId: !!addonData.productId,
+        hasName: !!addonData.name,
+        hasPrice: addonData.price !== undefined
+      });
+      throw new Error('Missing required fields for addon creation');
+    }
+    
+    if (this.type === 'postgres') {
+      const query = `
+        INSERT INTO addons (product_id, shop, name, price, type, required, options) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *
+      `;
+      
+      const result = await this.pool.query(query, [
+        addonData.productId,
+        addonData.shop || 'default',
+        addonData.name,
+        addonData.price,
+        addonData.type,
+        addonData.required || false,
+        addonData.options ? JSON.stringify(addonData.options) : null
+      ]);
+      
+      console.log('✅ Addon created in PostgreSQL:', result.rows[0].id);
+      return result.rows[0];
+    } else {
+      return new Promise((resolve, reject) => {
+        const stmt = this.db.prepare(`
+          INSERT INTO addons (productId, shop, name, price, type, required, options) 
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        
+        const values = [
+          addonData.productId,
+          addonData.shop || 'default',
+          addonData.name,
+          addonData.price,
+          addonData.type,
+          addonData.required || false,
+          addonData.options ? JSON.stringify(addonData.options) : null
+        ];
+        
+        console.log('SQLite insert values:', values);
+        
+        stmt.run(values, function(err) {
+          if (err) {
+            console.error('❌ SQLite addon creation error:', err);
+            reject(err);
+          } else {
+            console.log('✅ Addon created in SQLite:', this.lastID);
+            resolve({ id: this.lastID, ...addonData });
+          }
+        });
+        
+        stmt.finalize();
+      });
+    }
   }
 
   async getAddons(productId, shop = 'default') {
     console.log('🔧 getAddons called for product:', productId, 'shop:', shop);
-    return [];
+    
+    if (this.type === 'postgres') {
+      const query = 'SELECT * FROM addons WHERE product_id = $1 AND shop = $2 AND active = TRUE';
+      const result = await this.pool.query(query, [productId, shop]);
+      
+      const addons = result.rows.map(row => ({
+        id: row.id,
+        productId: row.product_id,
+        shop: row.shop,
+        name: row.name,
+        price: parseFloat(row.price),
+        type: row.type,
+        required: row.required,
+        options: row.options ? JSON.parse(row.options) : null,
+        active: row.active,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      }));
+      
+      console.log('📋 Retrieved', addons.length, 'addons from PostgreSQL');
+      return addons;
+    } else {
+      return new Promise((resolve, reject) => {
+        this.db.all(
+          'SELECT * FROM addons WHERE productId = ? AND shop = ? AND active = TRUE',
+          [productId, shop],
+          (err, rows) => {
+            if (err) {
+              console.error('❌ SQLite addon retrieval error:', err);
+              reject(err);
+            } else {
+              const addons = rows.map(row => ({
+                ...row,
+                options: row.options ? JSON.parse(row.options) : null
+              }));
+              console.log('📋 Retrieved', addons.length, 'addons from SQLite');
+              resolve(addons);
+            }
+          }
+        );
+      });
+    }
   }
 
   async updateAddon(id, updateData) {
     console.log('🔧 updateAddon called for id:', id, 'data:', updateData);
-    return { id, ...updateData };
+    
+    if (this.type === 'postgres') {
+      const fields = [];
+      const values = [];
+      let paramCount = 1;
+      
+      Object.keys(updateData).forEach(key => {
+        if (key === 'options') {
+          fields.push(`options = ${paramCount}`);
+          values.push(JSON.stringify(updateData[key]));
+        } else {
+          fields.push(`${key} = ${paramCount}`);
+          values.push(updateData[key]);
+        }
+        paramCount++;
+      });
+      
+      fields.push('updated_at = CURRENT_TIMESTAMP');
+      values.push(id);
+      
+      const query = `UPDATE addons SET ${fields.join(', ')} WHERE id = ${paramCount}`;
+      await this.pool.query(query, values);
+      
+      console.log('✅ Addon updated in PostgreSQL:', id);
+      return { id, ...updateData };
+    } else {
+      return new Promise((resolve, reject) => {
+        const fields = [];
+        const values = [];
+        
+        Object.keys(updateData).forEach(key => {
+          if (key === 'options') {
+            fields.push(`${key} = ?`);
+            values.push(JSON.stringify(updateData[key]));
+          } else {
+            fields.push(`${key} = ?`);
+            values.push(updateData[key]);
+          }
+        });
+        
+        fields.push('updated_at = CURRENT_TIMESTAMP');
+        values.push(id);
+        
+        const stmt = this.db.prepare(`UPDATE addons SET ${fields.join(', ')} WHERE id = ?`);
+        
+        stmt.run(values, function(err) {
+          if (err) {
+            console.error('❌ SQLite addon update error:', err);
+            reject(err);
+          } else {
+            console.log('✅ Addon updated in SQLite:', id);
+            resolve({ id, changes: this.changes });
+          }
+        });
+        
+        stmt.finalize();
+      });
+    }
   }
 
   async deleteAddon(id) {
     console.log('🔧 deleteAddon called for id:', id);
-    return { id, changes: 1 };
+    
+    if (this.type === 'postgres') {
+      await this.pool.query('UPDATE addons SET active = FALSE WHERE id = $1', [id]);
+      console.log('✅ Addon deleted in PostgreSQL:', id);
+      return { id, changes: 1 };
+    } else {
+      return new Promise((resolve, reject) => {
+        const stmt = this.db.prepare('UPDATE addons SET active = FALSE WHERE id = ?');
+        
+        stmt.run([id], function(err) {
+          if (err) {
+            console.error('❌ SQLite addon deletion error:', err);
+            reject(err);
+          } else {
+            console.log('✅ Addon deleted in SQLite:', id);
+            resolve({ id, changes: this.changes });
+          }
+        });
+        
+        stmt.finalize();
+      });
+    }
   }
 }
 
