@@ -42,45 +42,98 @@
   function getProductId() {
     let productId = null;
     
-    // Method 1: Form input
-    const formInput = document.querySelector('form[action*="/cart/add"] input[name="id"]');
-    if (formInput && formInput.value) {
-      productId = formInput.value;
-    }
-    
-    // Method 2: Data attributes
-    if (!productId) {
-      const element = document.querySelector('[data-product-id], [data-product]');
-      if (element) {
-        productId = element.getAttribute('data-product-id') || element.getAttribute('data-product');
+    // Method 1: Look for product JSON in script tags (most reliable)
+    const scripts = document.querySelectorAll('script[type="application/json"]');
+    for (const script of scripts) {
+      try {
+        const data = JSON.parse(script.textContent);
+        if (data.product && data.product.id) {
+          productId = data.product.id;
+          log('Found product ID in JSON script:', productId);
+          break;
+        }
+      } catch (e) {
+        // Continue searching
       }
     }
     
-    // Method 3: Shopify Analytics
+    // Method 2: Look for global product object
+    if (!productId && typeof window.product !== 'undefined') {
+      productId = window.product.id;
+      log('Found product ID in window.product:', productId);
+    }
+    
+    // Method 3: Look for Shopify analytics
     if (!productId && typeof window.ShopifyAnalytics !== 'undefined') {
       try {
         productId = window.ShopifyAnalytics.meta.product.id;
+        log('Found product ID in ShopifyAnalytics:', productId);
       } catch (e) {
         log('ShopifyAnalytics not available');
       }
     }
     
-    // Method 4: JSON scripts
+    // Method 4: Look for product data attributes (might be product ID, not variant)
     if (!productId) {
-      const scripts = document.querySelectorAll('script[type="application/json"]');
-      for (const script of scripts) {
-        try {
-          const data = JSON.parse(script.textContent);
-          if (data.product && data.product.id) {
-            productId = data.product.id;
+      const selectors = [
+        '[data-product-id]',
+        '[data-product]',
+        '.product[data-id]'
+      ];
+      
+      for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element) {
+          const id = element.getAttribute('data-product-id') || 
+                   element.getAttribute('data-product') || 
+                   element.getAttribute('data-id');
+          if (id) {
+            productId = id;
+            log('Found product ID in data attribute:', productId, 'from selector:', selector);
             break;
           }
-        } catch (e) {
-          // Continue searching
         }
       }
     }
     
+    // Method 5: Look in form inputs - but be careful, this might be variant ID
+    if (!productId) {
+      const formInput = document.querySelector('form[action*="/cart/add"] input[name="id"]');
+      if (formInput && formInput.value) {
+        // This is likely a variant ID, let's see if we can find the product ID elsewhere
+        const possibleVariantId = formInput.value;
+        log('Found possible variant ID in form:', possibleVariantId);
+        
+        // Try to find the actual product ID by looking for select options
+        const variantSelect = document.querySelector('select[name="id"]');
+        if (variantSelect) {
+          // Look for data attributes that might have the product ID
+          productId = variantSelect.getAttribute('data-product-id');
+          if (productId) {
+            log('Found product ID from variant select:', productId);
+          }
+        }
+        
+        // If we still don't have a product ID, we'll have to use the variant ID as fallback
+        if (!productId) {
+          productId = possibleVariantId;
+          log('Using variant ID as fallback:', productId);
+        }
+      }
+    }
+    
+    // Method 6: Try to extract from URL and look up
+    if (!productId) {
+      const urlMatch = window.location.pathname.match(/\/products\/([^\/\?]+)/);
+      if (urlMatch) {
+        const handle = urlMatch[1];
+        log('Found product handle from URL:', handle);
+        // We'll need to convert this handle to product ID server-side
+        productId = handle;
+      }
+    }
+    
+    log('Final product ID determination:', productId);
     return productId;
   }
 

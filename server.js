@@ -273,8 +273,32 @@ app.get('/api/products', getSessionMiddleware, async (req, res) => {
 
 app.get('/api/addons/:productId', async (req, res) => {
   try {
+    let productId = req.params.productId;
     const shop = req.query.shop || 'default';
-    const addons = await db.getAddons(req.params.productId, shop);
+    
+    console.log('Getting addons for productId:', productId, 'shop:', shop);
+    
+    // If productId looks like a handle (string), try to convert it to ID
+    if (isNaN(productId)) {
+      console.log('Product ID appears to be a handle, attempting lookup...');
+      try {
+        const session = await db.getSession(shop);
+        if (session) {
+          const api = new SimpleShopifyAPI(session.shop, session.accessToken);
+          const products = await api.getProducts(250); // Get more products to find the right one
+          const product = products.products.find(p => p.handle === productId);
+          if (product) {
+            productId = product.id;
+            console.log('Converted handle to product ID:', productId);
+          }
+        }
+      } catch (error) {
+        console.error('Error converting handle to product ID:', error);
+      }
+    }
+    
+    const addons = await db.getAddons(productId, shop);
+    console.log('Found', addons.length, 'addons for product', productId);
     res.json(addons);
   } catch (error) {
     console.error('Error fetching addons:', error);
