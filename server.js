@@ -101,7 +101,7 @@ app.get('/debug/sessions', async (req, res) => {
       res.json({ 
         shop, 
         hasSession: !!session, 
-        sessionData: session ? { shop: session.shop, hasToken: !!session.accessToken } : null 
+        sessionData: session ? { shop: session.shop, hasToken: !!session.accessToken, scope: session.scope } : null 
       });
     } else {
       res.json({ error: 'Provide ?shop=yourstore.myshopify.com' });
@@ -109,6 +109,24 @@ app.get('/debug/sessions', async (req, res) => {
   } catch (error) {
     res.json({ error: error.message });
   }
+});
+
+// Debug endpoint to check environment
+app.get('/debug/config', (req, res) => {
+  res.json({
+    hasApiKey: !!process.env.SHOPIFY_API_KEY,
+    hasApiSecret: !!process.env.SHOPIFY_API_SECRET,
+    host: process.env.HOST,
+    apiKeyLength: process.env.SHOPIFY_API_KEY ? process.env.SHOPIFY_API_KEY.length : 0
+  });
+});
+
+// Debug endpoint to test OAuth URL generation
+app.get('/debug/oauth-url', (req, res) => {
+  const shop = req.query.shop || 'test.myshopify.com';
+  const state = 'test-state';
+  const oauthUrl = getOAuthUrl(shop, state);
+  res.json({ shop, oauthUrl });
 });
 
 // Shopify OAuth start
@@ -162,8 +180,9 @@ app.get('/auth/callback', async (req, res) => {
     // Install script tag
     await installScriptTag(session);
     
-    // Redirect to app
-    res.redirect(`/?shop=${cleanShop}&installed=true`);
+    // Redirect to app embedded in Shopify admin
+    const embedUrl = `https://${cleanShop}/admin/apps/${process.env.SHOPIFY_API_KEY}`;
+    res.redirect(embedUrl);
   } catch (error) {
     console.error('Callback error:', error);
     res.status(500).send(`Authentication failed: ${error.message}`);
