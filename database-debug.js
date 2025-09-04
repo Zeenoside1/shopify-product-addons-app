@@ -386,26 +386,36 @@ class Database {
   async getAddons(productId, shop = 'default') {
     console.log('🔧 getAddons called for product:', productId, 'shop:', shop);
     
+    if (!productId) {
+      console.error('❌ No productId provided to getAddons');
+      return [];
+    }
+    
     if (this.type === 'postgres') {
-      const query = 'SELECT * FROM addons WHERE product_id = $1 AND shop = $2 AND active = TRUE';
-      const result = await this.pool.query(query, [productId, shop]);
-      
-      const addons = result.rows.map(row => ({
-        id: row.id,
-        productId: row.product_id,
-        shop: row.shop,
-        name: row.name,
-        price: parseFloat(row.price),
-        type: row.type,
-        required: row.required,
-        options: row.options ? JSON.parse(row.options) : null,
-        active: row.active,
-        created_at: row.created_at,
-        updated_at: row.updated_at
-      }));
-      
-      console.log('📋 Retrieved', addons.length, 'addons from PostgreSQL');
-      return addons;
+      try {
+        const query = 'SELECT * FROM addons WHERE product_id = $1 AND shop = $2 AND active = TRUE';
+        const result = await this.pool.query(query, [productId, shop]);
+        
+        const addons = result.rows.map(row => ({
+          id: row.id,
+          productId: row.product_id,
+          shop: row.shop,
+          name: row.name,
+          price: parseFloat(row.price),
+          type: row.type,
+          required: row.required,
+          options: row.options ? (typeof row.options === 'string' ? JSON.parse(row.options) : row.options) : null,
+          active: row.active,
+          created_at: row.created_at,
+          updated_at: row.updated_at
+        }));
+        
+        console.log('📋 Retrieved', addons.length, 'addons from PostgreSQL');
+        return addons;
+      } catch (error) {
+        console.error('❌ PostgreSQL getAddons error:', error);
+        return []; // Return empty array instead of throwing
+      }
     } else {
       return new Promise((resolve, reject) => {
         this.db.all(
@@ -414,14 +424,20 @@ class Database {
           (err, rows) => {
             if (err) {
               console.error('❌ SQLite addon retrieval error:', err);
-              reject(err);
+              resolve([]); // Resolve with empty array instead of rejecting
             } else {
-              const addons = rows.map(row => ({
-                ...row,
-                options: row.options ? JSON.parse(row.options) : null
-              }));
-              console.log('📋 Retrieved', addons.length, 'addons from SQLite');
-              resolve(addons);
+              try {
+                const addons = rows.map(row => ({
+                  ...row,
+                  options: row.options ? JSON.parse(row.options) : null
+                }));
+                console.log('📋 Retrieved', addons.length, 'addons from SQLite');
+                resolve(addons);
+              } catch (parseError) {
+                console.error('❌ Error parsing addon options:', parseError);
+                // Return rows without parsed options
+                resolve(rows.map(row => ({ ...row, options: null })));
+              }
             }
           }
         );

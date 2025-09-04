@@ -496,13 +496,36 @@
 
             async loadAddons() {
                 try {
+                    console.log('Loading addons for product:', this.currentProductId, 'shop:', this.shop);
                     const response = await fetch(`/api/addons/${this.currentProductId}?shop=${this.shop}`);
+                    
+                    if (!response.ok) {
+                        console.error('API response error:', response.status, response.statusText);
+                        const errorText = await response.text();
+                        console.error('Error details:', errorText);
+                        throw new Error(`API error: ${response.status} - ${errorText}`);
+                    }
+                    
                     const addons = await response.json();
-                    this.addons = addons;
+                    console.log('Raw API response:', addons);
+                    
+                    // Ensure addons is always an array
+                    if (Array.isArray(addons)) {
+                        this.addons = addons;
+                    } else if (addons && addons.data && Array.isArray(addons.data)) {
+                        this.addons = addons.data;
+                    } else {
+                        console.warn('API returned non-array response:', addons);
+                        this.addons = [];
+                    }
+                    
+                    console.log('Processed addons array:', this.addons);
                     this.renderAddons();
                 } catch (error) {
                     console.error('Error loading add-ons:', error);
-                    this.showError('Failed to load add-ons');
+                    this.addons = []; // Ensure it's always an array
+                    this.showError(`Failed to load add-ons: ${error.message}`);
+                    this.renderAddons(); // Still render (will show empty state)
                 }
             }
 

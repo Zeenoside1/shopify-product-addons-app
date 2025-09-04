@@ -42,52 +42,56 @@
   function getProductId() {
     let productId = null;
     
-    // Method 1: Look for product JSON in script tags (most reliable)
+    // Method 1: Look for product-info element (most reliable for many themes)
+    const productInfo = document.getElementsByTagName('product-info');
+    if (productInfo.length > 0 && productInfo[0].dataset.productId) {
+      productId = productInfo[0].dataset.productId;
+      log('Found product ID from product-info tag:', productId);
+      return productId;
+    }
+    
+    // Method 2: Look for product JSON in script tags (also very reliable)
     const scripts = document.querySelectorAll('script[type="application/json"]');
-    //const pinfo = document.getElementsByTagName('product-info');
-
-    /*
     for (const script of scripts) {
       try {
         const data = JSON.parse(script.textContent);
         if (data.product && data.product.id) {
           productId = data.product.id;
           log('Found product ID in JSON script:', productId);
-          break;
+          return productId;
         }
       } catch (e) {
         // Continue searching
       }
-    }*/
-      const pinfo = document.getElementsByTagName('product-info');
-
-        const tproductId = pinfo[0].dataset.productId;
-        if(tproductId) { productId = tproductId}
-        log('Found product ID from product info tag:', productId);
-
+    }
     
-    // Method 2: Look for global product object
+    // Method 3: Look for global product object
     if (!productId && typeof window.product !== 'undefined') {
       productId = window.product.id;
       log('Found product ID in window.product:', productId);
+      return productId;
     }
     
-    // Method 3: Look for Shopify analytics
+    // Method 4: Look for Shopify analytics
     if (!productId && typeof window.ShopifyAnalytics !== 'undefined') {
       try {
         productId = window.ShopifyAnalytics.meta.product.id;
         log('Found product ID in ShopifyAnalytics:', productId);
+        return productId;
       } catch (e) {
         log('ShopifyAnalytics not available');
       }
     }
     
-    // Method 4: Look for product data attributes (might be product ID, not variant)
+    // Method 5: Look for other product data attributes (broader search)
     if (!productId) {
       const selectors = [
+        'product-info[data-product-id]',
         '[data-product-id]',
         '[data-product]',
-        '.product[data-id]'
+        '.product[data-id]',
+        '.product-single[data-product-id]',
+        '.product-details[data-product-id]'
       ];
       
       for (const selector of selectors) {
@@ -99,13 +103,13 @@
           if (id) {
             productId = id;
             log('Found product ID in data attribute:', productId, 'from selector:', selector);
-            break;
+            return productId;
           }
         }
       }
     }
     
-    // Method 5: Look in form inputs - but be careful, this might be variant ID
+    // Method 6: Look in form inputs - but be careful, this might be variant ID
     if (!productId) {
       const formInput = document.querySelector('form[action*="/cart/add"] input[name="id"]');
       if (formInput && formInput.value) {
@@ -120,6 +124,7 @@
           productId = variantSelect.getAttribute('data-product-id');
           if (productId) {
             log('Found product ID from variant select:', productId);
+            return productId;
           }
         }
         
@@ -127,11 +132,12 @@
         if (!productId) {
           productId = possibleVariantId;
           log('Using variant ID as fallback:', productId);
+          return productId;
         }
       }
     }
     
-    // Method 6: Try to extract from URL and look up
+    // Method 7: Try to extract from URL and look up
     if (!productId) {
       const urlMatch = window.location.pathname.match(/\/products\/([^\/\?]+)/);
       if (urlMatch) {
@@ -139,6 +145,7 @@
         log('Found product handle from URL:', handle);
         // We'll need to convert this handle to product ID server-side
         productId = handle;
+        return productId;
       }
     }
     
@@ -154,7 +161,7 @@
       let shop = window.location.hostname;
       
       // If it's a custom domain, try to extract shop name or use the domain
-      /*if (!shop.includes('.myshopify.com')) {
+      if (!shop.includes('.myshopify.com')) {
         // For custom domains like 'paceworx.store', we need to convert to myshopify format
         // This might need to be configured per store, but let's try a common pattern
         if (shop.includes('.store')) {
@@ -163,8 +170,7 @@
           // Fallback - use the custom domain as-is and let the server handle it
           shop = shop + '.myshopify.com';
         }
-      }*/
-     shop = Shopify.shop
+      }
       
       const url = `${APP_HOST}/api/addons/${productId}?shop=${shop}`;
       
@@ -435,6 +441,63 @@
     }
 
     totalElement.textContent = `£${total.toFixed(2)}`;
+    
+    // Update the main product price display
+    updateMainPrice(total);
+    
+    // Try to update cart drawer if visible
+    updateCartDrawer(total);
+  }
+
+  function updateMainPrice(addonTotal) {
+    // Look for price elements and try to update them
+    const priceSelectors = [
+      '.price:not(.addon-price)',
+      '.product-price',
+      '.product__price', 
+      '[data-price]:not(.addon-price)',
+      '.money:not(.addon-price)',
+      '.price-item--regular'
+    ];
+    
+    priceSelectors.forEach(selector => {
+      const elements = document.querySelectorAll(selector);
+      elements.forEach(element => {
+        if (!element.getAttribute('data-original-price')) {
+          // Store original price on first run
+          const priceText = element.textContent.replace(/[£$€,\s]/g, '');
+          const price = parseFloat(priceText);
+          if (!isNaN(price) && price > 0) {
+            element.setAttribute('data-original-price', price.toString());
+          }
+        }
+        
+        const originalPrice = parseFloat(element.getAttribute('data-original-price'));
+        if (!isNaN(originalPrice) && originalPrice > 0) {
+          const newTotal = originalPrice + addonTotal;
+          // Preserve the original format
+          const originalText = element.textContent;
+          const currencySymbol = originalText.match(/[£$€]/)?.[0] || '£';
+          element.textContent = `${currencySymbol}${newTotal.toFixed(2)}`;
+          log('Updated price display:', originalPrice, '+', addonTotal, '=', newTotal);
+        }
+      });
+    });
+  }
+
+  function updateCartDrawer(addonTotal) {
+    // If cart drawer is open, try to update it
+    const cartDrawer = document.querySelector('.cart-drawer, .drawer--cart, #cart-drawer');
+    if (cartDrawer && cartDrawer.style.display !== 'none') {
+      log('Cart drawer detected, attempting to refresh...');
+      
+      // Try to trigger cart refresh if there's a refresh function
+      if (typeof window.refreshCart === 'function') {
+        window.refreshCart();
+      } else if (typeof window.updateCart === 'function') {
+        window.updateCart();
+      }
+    }
   }
 
   function updateCartProperties() {
