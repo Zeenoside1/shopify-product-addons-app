@@ -719,8 +719,9 @@
             }
         }
 
-        // Initialize the manager
+        // Initialize the manager and make it globally accessible
         const manager = new ProductAddonManager();
+        window.manager = manager;
     </script>
 </body>
 </html>

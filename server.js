@@ -38,9 +38,9 @@ class SimpleShopifyAPI {
     this.shop = shop;
     this.accessToken = accessToken;
     this.baseUrl = `https://${shop}/admin/api/2024-01`;
-    console.log('🔧 SimpleShopifyAPI initialized for shop:', shop);
-    console.log('🔧 Base URL:', this.baseUrl);
-    console.log('🔧 Token length:', accessToken ? accessToken.length : 'No token');
+    debugLog('🔧 SimpleShopifyAPI initialized for shop:', shop);
+    debugLog('🔧 Base URL:', this.baseUrl);
+    debugLog('🔧 Token length:', accessToken ? accessToken.length : 'No token');
   }
 
   async request(endpoint, options = {}) {
