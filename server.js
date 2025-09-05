@@ -45,8 +45,8 @@ class SimpleShopifyAPI {
 
   async request(endpoint, options = {}) {
     const url = `${this.baseUrl}/${endpoint}`;
-    console.log('📡 Making request to:', url);
-    console.log('📡 Method:', options.method || 'GET');
+    debugLog('📡 Making request to:', url);
+    debugLog('📡 Method:', options.method || 'GET');
     
     const headers = {
       'X-Shopify-Access-Token': this.accessToken,
@@ -55,7 +55,7 @@ class SimpleShopifyAPI {
       ...options.headers
     };
     
-    console.log('📡 Headers:', Object.keys(headers));
+    debugLog('📡 Headers:', Object.keys(headers));
     
     const response = await fetch(url, {
       method: options.method || 'GET',
@@ -63,17 +63,17 @@ class SimpleShopifyAPI {
       body: options.body ? JSON.stringify(options.body) : undefined
     });
 
-    console.log('📡 Response status:', response.status);
-    console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
+    debugLog('📡 Response status:', response.status);
+    debugLog('📡 Response headers:', Object.fromEntries(response.headers.entries()));
 
     if (!response.ok) {
       const responseText = await response.text();
-      console.error('📡 Error response body:', responseText);
+      console.error('📡 Error response body:', responseText); // Keep errors visible
       throw new Error(`Shopify API error: ${response.status} ${response.statusText} - ${responseText}`);
     }
 
     const data = await response.json();
-    console.log('📡 Success response keys:', Object.keys(data));
+    debugLog('📡 Success response keys:', Object.keys(data));
     return data;
   }
 
