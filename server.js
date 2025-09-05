@@ -166,7 +166,7 @@ app.get('/auth/callback', async (req, res) => {
   try {
     const { code, shop, state, error } = req.query;
     
-    console.log('OAuth callback received:', { code: !!code, shop, state, error });
+    if (DEBUG_MODE) console.log('OAuth callback received:', { code: !!code, shop, state, error });
     
     if (error) {
       console.error('OAuth error:', error);
@@ -179,11 +179,11 @@ app.get('/auth/callback', async (req, res) => {
     }
 
     const cleanShop = shop.replace(/https?:\/\//, '').replace(/\/$/, '');
-    console.log('Processing OAuth for shop:', cleanShop);
+    if (DEBUG_MODE) console.log('Processing OAuth for shop:', cleanShop);
     
     // Get access token
     const tokenData = await verifyOAuthCallback(code, cleanShop, state);
-    console.log('Token received:', { hasToken: !!tokenData.access_token, scope: tokenData.scope });
+    if (DEBUG_MODE) console.log('Token received:', { hasToken: !!tokenData.access_token, scope: tokenData.scope });
     
     // Create and store session
     const session = {
