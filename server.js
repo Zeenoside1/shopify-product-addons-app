@@ -15,7 +15,7 @@ app.use((req, res, next) => {
   }
   
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Shop-Domain');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Shop-Domain, X-Original-Shop');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   
   // Handle preflight requests
