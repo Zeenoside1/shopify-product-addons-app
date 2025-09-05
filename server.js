@@ -154,16 +154,42 @@ app.get('/debug/test-api', async (req, res) => {
     }
     
     console.log('🧪 Testing API connection for shop:', shop);
+    console.log('🧪 Session scopes:', session.scope);
+    
     const api = new SimpleShopifyAPI(session.shop, session.accessToken);
     
-    // Test with a simple API call
-    const result = await api.request('shop.json');
+    // Test with different endpoints to see which scopes work
+    const tests = {};
+    
+    try {
+      console.log('🧪 Testing shop.json...');
+      const shopResult = await api.request('shop.json');
+      tests.shop = { success: true, name: shopResult.shop.name };
+    } catch (error) {
+      tests.shop = { success: false, error: error.message };
+    }
+    
+    try {
+      console.log('🧪 Testing products.json...');
+      const productsResult = await api.request('products.json?limit=1');
+      tests.products = { success: true, count: productsResult.products.length };
+    } catch (error) {
+      tests.products = { success: false, error: error.message };
+    }
+    
+    try {
+      console.log('🧪 Testing script_tags.json...');
+      const scriptTagsResult = await api.request('script_tags.json');
+      tests.scriptTags = { success: true, count: scriptTagsResult.script_tags.length };
+    } catch (error) {
+      tests.scriptTags = { success: false, error: error.message };
+    }
     
     res.json({ 
-      success: true, 
-      shop: result.shop.name,
-      domain: result.shop.domain,
-      message: 'API connection successful'
+      shop: session.shop,
+      scopes: session.scope,
+      tokenLength: session.accessToken.length,
+      tests
     });
   } catch (error) {
     console.error('🧪 API test failed:', error);
