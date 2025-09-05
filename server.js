@@ -123,13 +123,55 @@ app.get('/debug/sessions', async (req, res) => {
       res.json({ 
         shop, 
         hasSession: !!session, 
-        sessionData: session ? { shop: session.shop, hasToken: !!session.accessToken, scope: session.scope } : null 
+        sessionData: session ? { 
+          shop: session.shop, 
+          hasToken: !!session.accessToken, 
+          scope: session.scope,
+          tokenLength: session.accessToken ? session.accessToken.length : 0,
+          created: session.created_at,
+          expires: session.expires
+        } : null 
       });
     } else {
       res.json({ error: 'Provide ?shop=yourstore.myshopify.com' });
     }
   } catch (error) {
     res.json({ error: error.message });
+  }
+});
+
+// Test endpoint to verify API connection
+app.get('/debug/test-api', async (req, res) => {
+  try {
+    const shop = req.query.shop;
+    if (!shop) {
+      return res.json({ error: 'Provide ?shop=yourstore.myshopify.com' });
+    }
+    
+    const session = await db.getSession(shop);
+    if (!session) {
+      return res.json({ error: 'No session found', shop });
+    }
+    
+    console.log('🧪 Testing API connection for shop:', shop);
+    const api = new SimpleShopifyAPI(session.shop, session.accessToken);
+    
+    // Test with a simple API call
+    const result = await api.request('shop.json');
+    
+    res.json({ 
+      success: true, 
+      shop: result.shop.name,
+      domain: result.shop.domain,
+      message: 'API connection successful'
+    });
+  } catch (error) {
+    console.error('🧪 API test failed:', error);
+    res.json({ 
+      success: false, 
+      error: error.message,
+      shop: req.query.shop
+    });
   }
 });
 
@@ -311,6 +353,33 @@ app.post('/api/addons', async (req, res) => {
     const { productId, name, price, type, required, options } = req.body;
     const shop = req.query.shop || req.body.shop || 'default';
     
+    console.log('🔧 Creating addon with data:');
+    console.log('  productId:', productId);
+    console.log('  name:', name);
+    console.log('  price:', price);
+    console.log('  type:', type);
+    console.log('  required:', required);
+    console.log('  options:', options);
+    console.log('  shop:', shop);
+    
+    // Validate required fields
+    if (!productId) {
+      console.error('❌ Missing productId');
+      return res.status(400).json({ error: 'Product ID is required' });
+    }
+    if (!name) {
+      console.error('❌ Missing name');
+      return res.status(400).json({ error: 'Add-on name is required' });
+    }
+    if (price === undefined || price === null) {
+      console.error('❌ Missing price');
+      return res.status(400).json({ error: 'Price is required' });
+    }
+    if (!type) {
+      console.error('❌ Missing type');
+      return res.status(400).json({ error: 'Add-on type is required' });
+    }
+    
     const addon = await db.createAddon({
       productId,
       name,
@@ -321,10 +390,11 @@ app.post('/api/addons', async (req, res) => {
       shop
     });
     
+    console.log('✅ Addon created successfully:', addon);
     res.json(addon);
   } catch (error) {
-    console.error('Error creating addon:', error);
-    res.status(500).json({ error: 'Failed to create addon' });
+    console.error('❌ Error creating addon:', error);
+    res.status(500).json({ error: 'Failed to create addon', details: error.message });
   }
 });
 

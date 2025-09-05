@@ -447,19 +447,42 @@
 
             async loadProducts() {
                 try {
+                    console.log('Loading products for shop:', this.shop);
                     const response = await fetch(`/api/products?shop=${this.shop}`);
                     
                     if (response.status === 401) {
-                        this.showError('Authentication required. Please reinstall the app.');
-                        return;
+                        const errorData = await response.json();
+                        console.error('Authentication error:', errorData);
+                        
+                        this.showError('Authentication expired. Please reinstall the app.');
+                        
+                        // If we have a redirect URL, show reinstall button
+                        if (errorData.redirect) {
+                            const container = document.getElementById('product-list');
+                            container.innerHTML = `
+                                <div class="empty-state">
+                                    <h3>Authentication Required</h3>
+                                    <p>Your app session has expired. Please reinstall the app to continue.</p>
+                                    <a href="${errorData.redirect}" class="polaris-button polaris-button-primary" style="display: inline-block; margin-top: 10px; text-decoration: none;">
+                                        Reinstall App
+                                    </a>
+                                </div>
+                            `;
+                            return;
+                        }
+                    }
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
                     
                     const products = await response.json();
+                    console.log('Products loaded:', products.length);
                     this.products = products;
                     this.renderProducts();
                 } catch (error) {
                     console.error('Error loading products:', error);
-                    this.showError('Failed to load products. Check console for details.');
+                    this.showError(`Failed to load products: ${error.message}`);
                 }
             }
 
