@@ -32,21 +32,28 @@ app.use(express.static('public'));
 // Initialize database
 const db = new Database();
 
+// Debug mode toggle
+const DEBUG_MODE = process.env.DEBUG_MODE === 'true' || process.env.NODE_ENV === 'development';
+
 // Simplified Shopify API client
 class SimpleShopifyAPI {
   constructor(shop, accessToken) {
     this.shop = shop;
     this.accessToken = accessToken;
     this.baseUrl = `https://${shop}/admin/api/2024-01`;
-    debugLog('🔧 SimpleShopifyAPI initialized for shop:', shop);
-    debugLog('🔧 Base URL:', this.baseUrl);
-    debugLog('🔧 Token length:', accessToken ? accessToken.length : 'No token');
+    if (DEBUG_MODE) {
+      console.log('🔧 SimpleShopifyAPI initialized for shop:', shop);
+      console.log('🔧 Base URL:', this.baseUrl);
+      console.log('🔧 Token length:', accessToken ? accessToken.length : 'No token');
+    }
   }
 
   async request(endpoint, options = {}) {
     const url = `${this.baseUrl}/${endpoint}`;
-    debugLog('📡 Making request to:', url);
-    debugLog('📡 Method:', options.method || 'GET');
+    if (DEBUG_MODE) {
+      console.log('📡 Making request to:', url);
+      console.log('📡 Method:', options.method || 'GET');
+    }
     
     const headers = {
       'X-Shopify-Access-Token': this.accessToken,
@@ -55,7 +62,7 @@ class SimpleShopifyAPI {
       ...options.headers
     };
     
-    debugLog('📡 Headers:', Object.keys(headers));
+    if (DEBUG_MODE) console.log('📡 Headers:', Object.keys(headers));
     
     const response = await fetch(url, {
       method: options.method || 'GET',
@@ -63,17 +70,19 @@ class SimpleShopifyAPI {
       body: options.body ? JSON.stringify(options.body) : undefined
     });
 
-    debugLog('📡 Response status:', response.status);
-    debugLog('📡 Response headers:', Object.fromEntries(response.headers.entries()));
+    if (DEBUG_MODE) {
+      console.log('📡 Response status:', response.status);
+      console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
+    }
 
     if (!response.ok) {
       const responseText = await response.text();
-      console.error('📡 Error response body:', responseText); // Keep errors visible
+      console.error('📡 Error response body:', responseText);
       throw new Error(`Shopify API error: ${response.status} ${response.statusText} - ${responseText}`);
     }
 
     const data = await response.json();
-    debugLog('📡 Success response keys:', Object.keys(data));
+    if (DEBUG_MODE) console.log('📡 Success response keys:', Object.keys(data));
     return data;
   }
 
@@ -152,7 +161,7 @@ app.get('/auth', async (req, res) => {
     
     // Build OAuth URL
     const oauthUrl = getOAuthUrl(cleanShop, state);
-    console.log('Redirecting to OAuth URL:', oauthUrl);
+    if (DEBUG_MODE) console.log('Redirecting to OAuth URL:', oauthUrl);
     
     res.redirect(oauthUrl);
   } catch (error) {
@@ -202,7 +211,7 @@ app.get('/auth/callback', async (req, res) => {
     
     // Redirect to embedded app in Shopify admin
     const redirectUrl = `https://${cleanShop}/admin/apps/${process.env.SHOPIFY_API_KEY}`;
-    console.log('Redirecting to embedded app:', redirectUrl);
+    if (DEBUG_MODE) console.log('Redirecting to embedded app:', redirectUrl);
     res.redirect(redirectUrl);
     
   } catch (error) {
@@ -214,7 +223,7 @@ app.get('/auth/callback', async (req, res) => {
 // Install script tag for frontend functionality
 async function installScriptTag(session) {
   try {
-    console.log('Installing script tag for:', session.shop);
+    if (DEBUG_MODE) console.log('Installing script tag for:', session.shop);
     const api = new SimpleShopifyAPI(session.shop, session.accessToken);
     
     // Check if script tag already exists
@@ -231,7 +240,7 @@ async function installScriptTag(session) {
       });
       console.log('Script tag installed successfully');
     } else {
-      console.log('Script tag already exists');
+      if (DEBUG_MODE) console.log('Script tag already exists');
     }
   } catch (error) {
     console.error('Error installing script tag:', error);
@@ -247,7 +256,7 @@ async function getSessionMiddleware(req, res, next) {
       return res.status(400).json({ error: 'Missing shop parameter' });
     }
     
-    console.log('🔍 Looking for session for shop:', shop);
+    if (DEBUG_MODE) console.log('🔍 Looking for session for shop:', shop);
     const session = await db.getSession(shop);
     
     if (!session) {
@@ -269,7 +278,7 @@ async function getSessionMiddleware(req, res, next) {
       });
     }
     
-    console.log('✅ Valid session found for shop:', shop);
+    if (DEBUG_MODE) console.log('✅ Valid session found for shop:', shop);
     req.session = session;
     next();
   } catch (error) {
@@ -317,8 +326,10 @@ app.get('/debug/test-api', async (req, res) => {
       return res.json({ error: 'No session found', shop });
     }
     
-    console.log('🧪 Testing API connection for shop:', shop);
-    console.log('🧪 Session scopes:', session.scope);
+    if (DEBUG_MODE) {
+      console.log('🧪 Testing API connection for shop:', shop);
+      console.log('🧪 Session scopes:', session.scope);
+    }
     
     const api = new SimpleShopifyAPI(session.shop, session.accessToken);
     
@@ -326,7 +337,7 @@ app.get('/debug/test-api', async (req, res) => {
     const tests = {};
     
     try {
-      console.log('🧪 Testing shop.json...');
+      if (DEBUG_MODE) console.log('🧪 Testing shop.json...');
       const shopResult = await api.request('shop.json');
       tests.shop = { success: true, name: shopResult.shop.name };
     } catch (error) {
@@ -334,7 +345,7 @@ app.get('/debug/test-api', async (req, res) => {
     }
     
     try {
-      console.log('🧪 Testing products.json...');
+      if (DEBUG_MODE) console.log('🧪 Testing products.json...');
       const productsResult = await api.request('products.json?limit=1');
       tests.products = { success: true, count: productsResult.products.length };
     } catch (error) {
@@ -342,7 +353,7 @@ app.get('/debug/test-api', async (req, res) => {
     }
     
     try {
-      console.log('🧪 Testing script_tags.json...');
+      if (DEBUG_MODE) console.log('🧪 Testing script_tags.json...');
       const scriptTagsResult = await api.request('script_tags.json');
       tests.scriptTags = { success: true, count: scriptTagsResult.script_tags.length };
     } catch (error) {
@@ -371,8 +382,10 @@ app.get('/api/resolve-shop', async (req, res) => {
     const customDomain = req.query.domain;
     const shopHeader = req.headers['x-shop-domain'];
     
-    console.log('🔍 Resolving custom domain:', customDomain);
-    console.log('🔍 Shop header:', shopHeader);
+    if (DEBUG_MODE) {
+      console.log('🔍 Resolving custom domain:', customDomain);
+      console.log('🔍 Shop header:', shopHeader);
+    }
     
     // Domain mappings
     const domainMappings = {
@@ -383,10 +396,10 @@ app.get('/api/resolve-shop', async (req, res) => {
     const resolvedShop = domainMappings[customDomain];
     
     if (resolvedShop) {
-      console.log('✅ Resolved domain:', customDomain, '→', resolvedShop);
+      if (DEBUG_MODE) console.log('✅ Resolved domain:', customDomain, '→', resolvedShop);
       res.json({ shop: resolvedShop, domain: customDomain });
     } else {
-      console.log('❌ Could not resolve domain:', customDomain);
+      if (DEBUG_MODE) console.log('❌ Could not resolve domain:', customDomain);
       res.status(404).json({ error: 'Domain not found', domain: customDomain });
     }
   } catch (error) {
@@ -398,8 +411,8 @@ app.get('/api/resolve-shop', async (req, res) => {
 // API Routes
 app.get('/api/products', getSessionMiddleware, async (req, res) => {
   try {
-    console.log('🛍️ Fetching products for shop:', req.session.shop);
-    console.log('🔑 Using access token:', req.session.accessToken ? 'Present' : 'Missing');
+    if (DEBUG_MODE) console.log('🛍️ Fetching products for shop:', req.session.shop);
+    if (DEBUG_MODE) console.log('🔑 Using access token:', req.session.accessToken ? 'Present' : 'Missing');
     
     const api = new SimpleShopifyAPI(req.session.shop, req.session.accessToken);
     const products = await api.getProducts(50);
@@ -433,7 +446,7 @@ app.get('/api/addons/:productId', async (req, res) => {
     // Handle custom domain resolution
     const customDomain = req.headers['x-shop-domain'];
     if (customDomain && !shop.includes('.myshopify.com')) {
-      console.log('Custom domain detected:', customDomain, 'provided shop:', shop);
+      if (DEBUG_MODE) console.log('Custom domain detected:', customDomain, 'provided shop:', shop);
       
       // Try to map custom domain to actual shop
       const domainMappings = {
@@ -442,14 +455,14 @@ app.get('/api/addons/:productId', async (req, res) => {
       
       const resolvedShop = domainMappings[customDomain];
       if (resolvedShop) {
-        console.log('Resolved custom domain to:', resolvedShop);
+        if (DEBUG_MODE) console.log('Resolved custom domain to:', resolvedShop);
         shop = resolvedShop;
       }
     }
     
     // If productId looks like a handle (string), try to convert it to ID
     if (isNaN(productId)) {
-      console.log('Product ID appears to be a handle, attempting lookup...');
+      if (DEBUG_MODE) console.log('Product ID appears to be a handle, attempting lookup...');
       try {
         const session = await db.getSession(shop);
         if (session) {
@@ -458,7 +471,7 @@ app.get('/api/addons/:productId', async (req, res) => {
           const product = products.products.find(p => p.handle === productId);
           if (product) {
             productId = product.id;
-            console.log('Converted handle to product ID:', productId);
+            if (DEBUG_MODE) console.log('Converted handle to product ID:', productId);
           }
         }
       } catch (error) {
@@ -480,14 +493,16 @@ app.post('/api/addons', async (req, res) => {
     const { productId, name, price, type, required, options } = req.body;
     const shop = req.query.shop || req.body.shop || 'default';
     
-    console.log('🔧 Creating addon with data:');
-    console.log('  productId:', productId);
-    console.log('  name:', name);
-    console.log('  price:', price);
-    console.log('  type:', type);
-    console.log('  required:', required);
-    console.log('  options:', options);
-    console.log('  shop:', shop);
+    if (DEBUG_MODE) {
+      console.log('🔧 Creating addon with data:');
+      console.log('  productId:', productId);
+      console.log('  name:', name);
+      console.log('  price:', price);
+      console.log('  type:', type);
+      console.log('  required:', required);
+      console.log('  options:', options);
+      console.log('  shop:', shop);
+    }
     
     // Validate required fields
     if (!productId) {
@@ -517,7 +532,7 @@ app.post('/api/addons', async (req, res) => {
       shop
     });
     
-    console.log('✅ Addon created successfully:', addon);
+    console.log('✅ Addon created successfully:', addon.id || 'new addon');
     res.json(addon);
   } catch (error) {
     console.error('❌ Error creating addon:', error);
