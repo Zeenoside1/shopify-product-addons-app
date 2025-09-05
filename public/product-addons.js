@@ -157,31 +157,113 @@
     try {
       log('Loading add-ons for product:', productId);
       
-      // Get shop domain - handle custom domains
+      // Get shop domain - handle custom domains properly
       let shop = window.location.hostname;
       
-      // If it's a custom domain, try to extract shop name or use the domain
+      log('Original hostname:', shop);
+      
+      // For custom domains, we need to find the actual myshopify.com domain
+      // This is tricky - let's try multiple approaches
+      
+      // Method 1: Check if there's a Shopify global with the shop domain
+      if (typeof window.Shopify !== 'undefined' && window.Shopify.shop) {
+        shop = window.Shopify.shop;
+        log('Found shop from window.Shopify:', shop);
+      }
+      // Method 2: Check ShopifyAnalytics
+      else if (typeof window.ShopifyAnalytics !== 'undefined' && window.ShopifyAnalytics.meta.page.customerId) {
+        // Try to extract shop from analytics
+        if (window.ShopifyAnalytics.meta.page.customerId) {
+          // This is a fallback - we'll need the actual shop domain
+          log('Found analytics but need to determine shop domain');
+        }
+      }
+      // Method 3: Check for shop parameter in current URL
+      else {
+        const urlParams = new URLSearchParams(window.location.search);
+        const shopParam = urlParams.get('shop');
+        if (shopParam) {
+          shop = shopParam;
+          log('Found shop from URL parameter:', shop);
+        }
+        // Method 4: Try to get from script src
+        else {
+          const scriptSrc = document.currentScript?.src || document.querySelector('script[src*="product-addons.js"]')?.src;
+          if (scriptSrc) {
+            const scriptUrl = new URL(scriptSrc);
+            const scriptShop = scriptUrl.searchParams.get('shop');
+            if (scriptShop) {
+              shop = scriptShop;
+              log('Found shop from script src:', shop);
+            }
+          }
+        }
+      }
+      
+      // Ensure it's a proper myshopify.com domain
       if (!shop.includes('.myshopify.com')) {
-        // For custom domains like 'paceworx.store', we need to convert to myshopify format
-        // This might need to be configured per store, but let's try a common pattern
-        if (shop.includes('.store')) {
-          shop = shop.replace('.store', '.myshopify.com');
-        } else {
-          // Fallback - use the custom domain as-is and let the server handle it
-          shop = shop + '.myshopify.com';
+        // For custom domains, we need to convert to the actual shop domain
+        // This is the tricky part - we might need to call an API to resolve this
+        log('Custom domain detected, trying to resolve to myshopify.com domain');
+        
+        // Try to get it from the script tag that loaded this script
+        const currentScript = document.querySelector('script[src*="product-addons.js"]');
+        if (currentScript && currentScript.src) {
+          const scriptUrl = new URL(currentScript.src);
+          const shopFromScript = scriptUrl.searchParams.get('shop');
+          if (shopFromScript && shopFromScript.includes('.myshopify.com')) {
+            shop = shopFromScript;
+            log('Resolved shop from script URL:', shop);
+          }
+        }
+        
+        // If still no luck, we'll need to make an API call to resolve the domain
+        if (!shop.includes('.myshopify.com')) {
+          log('Attempting to resolve custom domain via API');
+          try {
+            const resolveResponse = await fetch(`${APP_HOST}/api/resolve-shop?domain=${window.location.hostname}`, {
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Shop-Domain': window.location.hostname
+              }
+            });
+            
+            if (resolveResponse.ok) {
+              const resolveData = await resolveResponse.json();
+              if (resolveData.shop) {
+                shop = resolveData.shop;
+                log('Resolved shop via API:', shop);
+              }
+            }
+          } catch (error) {
+            log('Could not resolve shop via API:', error);
+          }
+        }
+        
+        // Final fallback - try common patterns
+        if (!shop.includes('.myshopify.com')) {
+          log('Using fallback shop resolution');
+          if (shop.includes('paceworx')) {
+            shop = 'megrq8-sg.myshopify.com'; // Hardcoded for your specific case
+            log('Applied hardcoded shop mapping:', shop);
+          } else {
+            shop = shop.replace(/\.(store|com|net|org)$/, '.myshopify.com');
+            log('Applied generic shop conversion:', shop);
+          }
         }
       }
       
       const url = `${APP_HOST}/api/addons/${productId}?shop=${shop}`;
       
-      log('Fetching from:', url);
-      log('Using shop:', shop);
+      log('Final API URL:', url);
+      log('Using shop domain:', shop);
       
       const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'X-Shop-Domain': window.location.hostname
+          'X-Shop-Domain': window.location.hostname,
+          'X-Original-Shop': shop
         }
       });
       

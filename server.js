@@ -340,11 +340,29 @@ app.get('/api/products', getSessionMiddleware, async (req, res) => {
 });
 
 app.get('/api/addons/:productId', async (req, res) => {
+app.get('/api/addons/:productId', async (req, res) => {
   try {
     let productId = req.params.productId;
-    const shop = req.query.shop || 'default';
+    let shop = req.query.shop || 'default';
     
     console.log('Getting addons for productId:', productId, 'shop:', shop);
+    
+    // Handle custom domain resolution
+    const customDomain = req.headers['x-shop-domain'];
+    if (customDomain && !shop.includes('.myshopify.com')) {
+      console.log('Custom domain detected:', customDomain, 'provided shop:', shop);
+      
+      // Try to map custom domain to actual shop
+      const domainMappings = {
+        'paceworx.store': 'megrq8-sg.myshopify.com',
+      };
+      
+      const resolvedShop = domainMappings[customDomain];
+      if (resolvedShop) {
+        console.log('Resolved custom domain to:', resolvedShop);
+        shop = resolvedShop;
+      }
+    }
     
     // If productId looks like a handle (string), try to convert it to ID
     if (isNaN(productId)) {
@@ -366,7 +384,7 @@ app.get('/api/addons/:productId', async (req, res) => {
     }
     
     const addons = await db.getAddons(productId, shop);
-    console.log('Found', addons.length, 'addons for product', productId);
+    console.log('Found', addons.length, 'addons for product', productId, 'shop', shop);
     res.json(addons);
   } catch (error) {
     console.error('Error fetching addons:', error);
