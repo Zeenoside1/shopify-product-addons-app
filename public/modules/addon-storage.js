@@ -130,32 +130,46 @@ export class AddonStorage {
   // Match addons by looking at cart properties
   matchAddonsByCartProperties(item, storage) {
     const itemText = item.textContent || '';
+    this.logger.log('🔍 Matching by properties for item text:', itemText.substring(0, 300));
     
     // Look through all stored products for matching addon names
     for (const [productId, productData] of Object.entries(storage)) {
       if (!productData.addons) continue;
       
+      this.logger.log(`  🔍 Checking stored product ${productId}:`, productData);
+      
       let matchCount = 0;
       let totalMatched = 0;
+      const matchedAddons = [];
       
       productData.addons.forEach(addon => {
         // Check if this addon name appears in the cart item text
-        if (itemText.includes(addon.name) || itemText.includes(addon.value)) {
+        const nameMatch = itemText.includes(addon.name);
+        const valueMatch = addon.value && itemText.includes(addon.value);
+        const priceMatch = itemText.includes(`£${addon.price}`);
+        
+        this.logger.log(`    Addon "${addon.name}": name=${nameMatch}, value=${valueMatch}, price=${priceMatch}`);
+        
+        if (nameMatch || valueMatch || priceMatch) {
           matchCount++;
           totalMatched += addon.price;
+          matchedAddons.push(addon);
         }
       });
       
+      this.logger.log(`  Match results: ${matchCount}/${productData.addons.length} addons matched, total: £${totalMatched}`);
+      
       // If we match most/all addons, this is likely the right product
       if (matchCount > 0 && matchCount >= productData.addons.length * 0.7) {
-        this.logger.log('Matched addons by properties for', productId, 'matches:', matchCount);
+        this.logger.log('✅ Match found! Using product:', productId);
         return {
-          addons: productData.addons,
-          totalPrice: productData.totalPrice
+          addons: matchedAddons,
+          totalPrice: totalMatched
         };
       }
     }
     
+    this.logger.log('❌ No property matches found');
     return null;
   }
 
