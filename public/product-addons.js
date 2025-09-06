@@ -24,20 +24,25 @@
     isInitialized = true;
     log('Initializing...');
     
-    // Check if we're on a product page
-    if (!isProductPage()) {
-      log('Not a product page, skipping');
-      return;
+    // Check what type of page we're on
+    if (isProductPage()) {
+      log('Product page detected');
+      const productId = getProductId();
+      if (productId) {
+        log('Found product ID:', productId);
+        loadAddons(productId);
+      } else {
+        log('Could not determine product ID');
+      }
+    } else if (isCartPage()) {
+      log('Cart page detected');
+      initCartPageUpdates();
+    } else if (isCheckoutPage()) {
+      log('Checkout page detected');
+      initCheckoutPageUpdates();
+    } else {
+      log('Not a relevant page, skipping');
     }
-
-    const productId = getProductId();
-    if (!productId) {
-      log('Could not determine product ID');
-      return;
-    }
-
-    log('Found product ID:', productId);
-    loadAddons(productId);
   }
 
   function isProductPage() {
@@ -46,6 +51,22 @@
            document.querySelector('form[action*="/cart/add"]') ||
            document.querySelector('.product-form') ||
            document.body.classList.contains('template-product');
+  }
+
+  function isCartPage() {
+    return window.location.pathname.includes('/cart') ||
+           document.body.classList.contains('template-cart') ||
+           document.querySelector('.cart-page') ||
+           document.querySelector('#cart-page') ||
+           document.querySelector('[data-cart-items]');
+  }
+
+  function isCheckoutPage() {
+    return window.location.pathname.includes('/checkout') ||
+           window.location.hostname.includes('checkout') ||
+           document.body.classList.contains('template-checkout') ||
+           document.querySelector('.checkout') ||
+           document.querySelector('#checkout');
   }
 
   function getProductId() {
@@ -294,6 +315,294 @@
     }
   }
 
+  // NEW: Cart page initialization
+  function initCartPageUpdates() {
+    log('Initializing cart page updates...');
+    
+    // Update cart prices on load
+    updateCartPagePrices();
+    
+    // Watch for cart updates
+    watchForCartUpdates();
+    
+    // Set up mutation observer for dynamic content
+    const observer = new MutationObserver(() => {
+      updateCartPagePrices();
+    });
+    
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  // NEW: Checkout page initialization  
+  function initCheckoutPageUpdates() {
+    log('Initializing checkout page updates...');
+    
+    // Update checkout prices on load
+    updateCheckoutPagePrices();
+    
+    // Set up mutation observer for dynamic content
+    const observer = new MutationObserver(() => {
+      updateCheckoutPagePrices();
+    });
+    
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  // NEW: Update prices on cart page
+  function updateCartPagePrices() {
+    const cartItems = document.querySelectorAll('[data-cart-item], .cart-item, .cart__item, .line-item');
+    
+    cartItems.forEach(item => {
+      try {
+        // Look for addon properties in the item
+        const properties = extractAddonProperties(item);
+        if (properties.totalAddonPrice > 0) {
+          updateCartItemPrice(item, properties);
+        }
+      } catch (error) {
+        log('Error updating cart item price:', error);
+      }
+    });
+    
+    // Update cart total
+    updateCartTotal();
+  }
+
+  // NEW: Update prices on checkout page
+  function updateCheckoutPagePrices() {
+    const lineItems = document.querySelectorAll('[data-line-item], .line-item, .product, .order-summary__section .product');
+    
+    lineItems.forEach(item => {
+      try {
+        // Look for addon properties in the item
+        const properties = extractAddonProperties(item);
+        if (properties.totalAddonPrice > 0) {
+          updateCheckoutItemPrice(item, properties);
+        }
+      } catch (error) {
+        log('Error updating checkout item price:', error);
+      }
+    });
+    
+    // Update order total
+    updateOrderTotal();
+  }
+
+  // NEW: Extract addon properties from cart/checkout item
+  function extractAddonProperties(item) {
+    const properties = {
+      addons: [],
+      totalAddonPrice: 0
+    };
+    
+    // Look for addon properties in various places
+    const propertySelectors = [
+      '.product-option',
+      '.line-item-property',
+      '.cart-attribute',
+      '.product-property',
+      '.custom-property',
+      '.variant-option'
+    ];
+    
+    propertySelectors.forEach(selector => {
+      const elements = item.querySelectorAll(selector);
+      elements.forEach(element => {
+        const text = element.textContent || element.innerText || '';
+        const priceMatch = text.match(/\+£([\d.]+)/);
+        if (priceMatch) {
+          const price = parseFloat(priceMatch[1]);
+          properties.addons.push({
+            name: text.replace(/\+£[\d.]+/, '').trim(),
+            price: price
+          });
+          properties.totalAddonPrice += price;
+        }
+      });
+    });
+    
+    // Also check for hidden inputs or data attributes
+    const inputs = item.querySelectorAll('input[name*="properties"]');
+    inputs.forEach(input => {
+      const value = input.value || '';
+      const priceMatch = value.match(/\+£([\d.]+)/);
+      if (priceMatch) {
+        const price = parseFloat(priceMatch[1]);
+        properties.totalAddonPrice += price;
+      }
+    });
+    
+    return properties;
+  }
+
+  // NEW: Update individual cart item price
+  function updateCartItemPrice(item, properties) {
+    if (properties.totalAddonPrice <= 0) return;
+    
+    // Find price elements in the cart item
+    const priceSelectors = [
+      '.price',
+      '.cart-item__price',
+      '.line-item__price',
+      '.money',
+      '[data-price]'
+    ];
+    
+    priceSelectors.forEach(selector => {
+      const priceElements = item.querySelectorAll(selector);
+      priceElements.forEach(element => {
+        if (!element.classList.contains('addon-updated')) {
+          updatePriceElement(element, properties.totalAddonPrice);
+          element.classList.add('addon-updated');
+        }
+      });
+    });
+  }
+
+  // NEW: Update individual checkout item price
+  function updateCheckoutItemPrice(item, properties) {
+    if (properties.totalAddonPrice <= 0) return;
+    
+    // Find price elements in the checkout item
+    const priceSelectors = [
+      '.product__price',
+      '.line-item__price', 
+      '.order-summary__price',
+      '.money',
+      '[data-price]'
+    ];
+    
+    priceSelectors.forEach(selector => {
+      const priceElements = item.querySelectorAll(selector);
+      priceElements.forEach(element => {
+        if (!element.classList.contains('addon-updated')) {
+          updatePriceElement(element, properties.totalAddonPrice);
+          element.classList.add('addon-updated');
+        }
+      });
+    });
+  }
+
+  // NEW: Update a price element with addon cost
+  function updatePriceElement(element, addonPrice) {
+    const originalText = element.textContent || element.innerText || '';
+    
+    // Skip if already updated
+    if (originalText.includes('(+£')) return;
+    
+    // Extract current price
+    const priceMatch = originalText.match(/(£|$|€)([\d,]+\.?\d*)/);
+    if (priceMatch) {
+      const currencySymbol = priceMatch[1];
+      const currentPrice = parseFloat(priceMatch[2].replace(/,/g, ''));
+      
+      if (!isNaN(currentPrice)) {
+        const newPrice = currentPrice + addonPrice;
+        const updatedText = originalText.replace(
+          priceMatch[0], 
+          `${currencySymbol}${newPrice.toFixed(2)} (incl. +£${addonPrice.toFixed(2)} add-ons)`
+        );
+        element.textContent = updatedText;
+        log('Updated price element:', currentPrice, '+', addonPrice, '=', newPrice);
+      }
+    }
+  }
+
+  // NEW: Update cart total
+  function updateCartTotal() {
+    let totalAddonPrice = 0;
+    
+    // Sum up all addon prices
+    document.querySelectorAll('.addon-updated').forEach(element => {
+      const text = element.textContent || '';
+      const addonMatch = text.match(/\+£([\d.]+)/);
+      if (addonMatch) {
+        totalAddonPrice += parseFloat(addonMatch[1]);
+      }
+    });
+    
+    if (totalAddonPrice > 0) {
+      // Update cart total elements
+      const totalSelectors = [
+        '.cart-subtotal',
+        '.cart-total',
+        '.cart__total',
+        '.subtotal',
+        '[data-cart-total]'
+      ];
+      
+      totalSelectors.forEach(selector => {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach(element => {
+          if (!element.classList.contains('total-updated')) {
+            updatePriceElement(element, totalAddonPrice);
+            element.classList.add('total-updated');
+          }
+        });
+      });
+    }
+  }
+
+  // NEW: Update order total on checkout
+  function updateOrderTotal() {
+    let totalAddonPrice = 0;
+    
+    // Sum up all addon prices
+    document.querySelectorAll('.addon-updated').forEach(element => {
+      const text = element.textContent || '';
+      const addonMatch = text.match(/\+£([\d.]+)/);
+      if (addonMatch) {
+        totalAddonPrice += parseFloat(addonMatch[1]);
+      }
+    });
+    
+    if (totalAddonPrice > 0) {
+      // Update order total elements
+      const totalSelectors = [
+        '.order-summary__total',
+        '.total-line__price',
+        '.payment-due',
+        '[data-checkout-total]'
+      ];
+      
+      totalSelectors.forEach(selector => {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach(element => {
+          if (!element.classList.contains('total-updated')) {
+            updatePriceElement(element, totalAddonPrice);
+            element.classList.add('total-updated');
+          }
+        });
+      });
+    }
+  }
+
+  // NEW: Watch for cart updates (AJAX cart changes)
+  function watchForCartUpdates() {
+    // Watch for fetch requests that might update the cart
+    const originalFetch = window.fetch;
+    window.fetch = async function(...args) {
+      const response = await originalFetch.apply(this, args);
+      
+      // Check if this is a cart update request
+      const url = args[0];
+      if (typeof url === 'string' && (url.includes('/cart') || url.includes('cart.js'))) {
+        // Wait a bit for the DOM to update, then refresh prices
+        setTimeout(() => {
+          updateCartPagePrices();
+        }, 500);
+      }
+      
+      return response;
+    };
+  }
+
   function renderAddons(addons) {
     // Remove any existing containers to prevent duplicates
     const existingContainers = document.querySelectorAll('#product-addons-container');
@@ -400,6 +709,18 @@
         border-radius: 4px;
         background: white;
         font-size: 14px;
+      }
+      
+      /* Enhanced cart/checkout styling */
+      .addon-updated {
+        color: #007ace !important;
+        font-weight: 500;
+      }
+      
+      .total-updated {
+        background: #f0f9ff;
+        padding: 2px 4px;
+        border-radius: 3px;
       }
     `;
     
