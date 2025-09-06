@@ -352,17 +352,17 @@
                                 </div>
 
                                 <div class="polaris-form-group">
-                                    <label class="polaris-label" for="addon-price">Price (£)</label>
-                                    <input type="number" id="addon-price" class="polaris-text-field" step="0.01" min="0" placeholder="0.00" required>
-                                </div>
-
-                                <div class="polaris-form-group">
                                     <label class="polaris-label" for="addon-type">Type</label>
                                     <select id="addon-type" class="polaris-select" required>
                                         <option value="">Select type</option>
                                         <option value="checkbox">Checkbox (On/Off)</option>
                                         <option value="dropdown">Dropdown (Multiple Options)</option>
                                     </select>
+                                </div>
+
+                                <div class="polaris-form-group">
+                                    <label class="polaris-label" for="addon-price">Price (£)</label>
+                                    <input type="number" id="addon-price" class="polaris-text-field" step="0.01" min="0" placeholder="0.00" required>
                                 </div>
 
                                 <div id="dropdown-options" style="display: none;">
@@ -578,12 +578,58 @@
                 `).join('');
             }
 
+            async editAddon(id) {
+                try {
+                    const addon = this.addons.find(a => a.id === id);
+                    if (!addon) {
+                        this.showError('Add-on not found');
+                        return;
+                    }
+
+                    // Populate the form with current values
+                    document.getElementById('addon-name').value = addon.name;
+                    document.getElementById('addon-type').value = addon.type;
+                    document.getElementById('addon-price').value = addon.price;
+                    document.getElementById('addon-required').checked = addon.required;
+
+                    // Handle dropdown options if it's a dropdown type
+                    if (addon.type === 'dropdown' && addon.options) {
+                        this.toggleDropdownOptions(true);
+                        const container = document.getElementById('options-container');
+                        container.innerHTML = '';
+                        
+                        addon.options.forEach(option => {
+                            this.addDropdownOption(option.label, option.price || 0);
+                        });
+                    } else {
+                        this.toggleDropdownOptions(false);
+                    }
+
+                    // Change form to edit mode
+                    this.editingAddonId = id;
+                    document.querySelector('#addon-form button[type="submit"]').textContent = 'Update Add-on';
+                    
+                    // Scroll to form
+                    document.getElementById('addon-form').scrollIntoView({ behavior: 'smooth' });
+                    
+                } catch (error) {
+                    console.error('Error editing add-on:', error);
+                    this.showError('Failed to edit add-on');
+                }
+            }
+
             async createAddon() {
                 const formData = this.getFormData();
                 
                 try {
-                    const response = await fetch(`/api/addons?shop=${this.shop}`, {
-                        method: 'POST',
+                    const url = this.editingAddonId 
+                        ? `/api/addons/${this.editingAddonId}`
+                        : `/api/addons?shop=${this.shop}`;
+                    
+                    const method = this.editingAddonId ? 'PUT' : 'POST';
+                    
+                    const response = await fetch(url, {
+                        method: method,
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             ...formData,
@@ -593,15 +639,16 @@
                     });
 
                     if (response.ok) {
-                        this.showSuccess('Add-on created successfully');
+                        this.showSuccess(this.editingAddonId ? 'Add-on updated successfully!' : 'Add-on created successfully!');
                         this.resetForm();
                         await this.loadAddons();
                     } else {
-                        throw new Error('Failed to create add-on');
+                        const error = await response.text();
+                        this.showError(`Failed to ${this.editingAddonId ? 'update' : 'create'} add-on: ${error}`);
                     }
                 } catch (error) {
-                    console.error('Error creating add-on:', error);
-                    this.showError('Failed to create add-on');
+                    console.error('Error creating/updating add-on:', error);
+                    this.showError('Network error occurred');
                 }
             }
 
@@ -672,14 +719,14 @@
                 }
             }
 
-            addDropdownOption() {
+            addDropdownOption(labelValue = '', priceValue = 0) {
                 const container = document.getElementById('options-container');
                 const row = document.createElement('div');
                 row.className = 'option-row';
                 
                 row.innerHTML = `
-                    <input type="text" class="polaris-text-field option-label" placeholder="Option name">
-                    <input type="number" class="polaris-text-field option-price" placeholder="Price" step="0.01" min="0">
+                    <input type="text" class="polaris-text-field option-label" placeholder="Option name" value="${labelValue}">
+                    <input type="number" class="polaris-text-field option-price" placeholder="Price" step="0.01" min="0" value="${priceValue}">
                     <button type="button" class="polaris-button polaris-button-destructive" onclick="this.parentElement.remove()">×</button>
                 `;
                 
@@ -688,8 +735,15 @@
 
             resetForm() {
                 document.getElementById('addon-form').reset();
+                this.editingAddonId = null;
+                document.querySelector('#addon-form button[type="submit"]').textContent = 'Create Add-on';
                 document.getElementById('dropdown-options').style.display = 'none';
                 document.getElementById('options-container').innerHTML = '';
+                
+                // Reset price field state
+                const priceField = document.getElementById('addon-price');
+                priceField.readOnly = false;
+                priceField.style.backgroundColor = 'white';
             }
 
             showMessage(message, type) {
@@ -711,11 +765,6 @@
 
             showError(message) {
                 this.showMessage(message, 'critical');
-            }
-
-            editAddon(addonId) {
-                // TODO: Implement edit functionality
-                alert('Edit functionality coming soon!');
             }
         }
 

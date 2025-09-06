@@ -7,12 +7,21 @@
   const APP_HOST = window.location.protocol + '//' + 'shopify-product-addons-app-production.up.railway.app';
   const DEBUG = true;
   
+  // Prevent double initialization
+  let isInitialized = false;
+  
   function log(...args) {
     if (DEBUG) console.log('[Product Add-ons]', ...args);
   }
 
   // Main initialization
   function init() {
+    if (isInitialized) {
+      log('Already initialized, skipping');
+      return;
+    }
+    
+    isInitialized = true;
     log('Initializing...');
     
     // Check if we're on a product page
@@ -286,6 +295,13 @@
   }
 
   function renderAddons(addons) {
+    // Remove any existing containers to prevent duplicates
+    const existingContainers = document.querySelectorAll('#product-addons-container');
+    existingContainers.forEach(container => {
+      log('Removing existing add-ons container');
+      container.remove();
+    });
+    
     const container = createAddonsContainer();
     if (!container) {
       log('Could not create add-ons container');
@@ -619,15 +635,12 @@
     }
   }
 
-  // Initialize when ready
+  // Initialize only once when DOM is ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
     init();
   }
-
-  // Also try after a delay for dynamic content
-  setTimeout(init, 1000);
   
   log('Script loaded successfully');
 
