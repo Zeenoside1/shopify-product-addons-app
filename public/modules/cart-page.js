@@ -184,16 +184,21 @@ export class CartPageHandler {
     let totalAddonPrice = 0;
     
     cartItems.forEach((item, index) => {
+      const itemId = this.getElementId(item);
+      
+      // Skip if already processed (avoid duplicate processing)
+      if (this.processedElements.has(itemId)) {
+        this.logger.log(`Fallback item ${index + 1} - already processed, skipping`);
+        return;
+      }
+      
       const properties = this.extractCartAddonProperties(item);
       this.logger.log(`Fallback item ${index + 1} parsed price:`, properties.totalAddonPrice);
       
       if (properties.totalAddonPrice > 0) {
-        const itemId = this.getElementId(item);
-        if (!this.processedElements.has(itemId)) {
-          this.updateCartItemPriceWithStoredData(item, [], properties.totalAddonPrice);
-          this.processedElements.add(itemId);
-          totalAddonPrice += properties.totalAddonPrice;
-        }
+        this.updateCartItemPriceWithStoredData(item, properties.addons, properties.totalAddonPrice);
+        this.processedElements.add(itemId);
+        totalAddonPrice += properties.totalAddonPrice;
       }
     });
     
