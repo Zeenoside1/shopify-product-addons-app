@@ -124,36 +124,32 @@ export class PriceUpdater {
     
     this.logger.log('Updating cart total with addon price:', totalAddonPrice);
     
-    // Find total elements that haven't been updated yet
-    const totalTextElements = Array.from(document.querySelectorAll('*')).filter(el => {
-      const text = el.textContent.toLowerCase();
-      return (text.includes('estimated total') || text.includes('subtotal')) && 
-             !el.classList.contains('total-updated') &&
-             !el.hasAttribute('data-addon-total-original');
-    });
+    // More specific and limited approach to avoid multiple updates
+    const totalSelectors = [
+      '.cart__total .money:not(.cart-total-updated)',
+      '.cart-total .money:not(.cart-total-updated)',
+      '.totals__total .money:not(.cart-total-updated)',
+      '[data-cart-total]:not(.cart-total-updated)'
+    ];
     
-    totalTextElements.forEach(element => {
-      // Look for price elements within or near this element
-      const nearbyPrices = element.querySelectorAll('.money, [data-price], .price');
-      nearbyPrices.forEach(priceEl => {
-        if (!priceEl.classList.contains('total-updated') && !priceEl.hasAttribute('data-addon-total-original')) {
-          if (this.updatePriceElement(priceEl, totalAddonPrice)) {
-            priceEl.classList.add('total-updated');
-            priceEl.setAttribute('data-addon-total-original', 'true');
-            this.logger.log('Updated total via proximity search');
+    let updated = false;
+    totalSelectors.forEach(selector => {
+      const elements = document.querySelectorAll(selector);
+      elements.forEach(element => {
+        if (!element.classList.contains('cart-total-updated') && !element.hasAttribute('data-cart-total-original')) {
+          if (this.updatePriceElement(element, totalAddonPrice)) {
+            element.classList.add('cart-total-updated');
+            element.setAttribute('data-cart-total-original', 'true');
+            updated = true;
+            this.logger.log('Updated cart total element');
           }
         }
       });
-      
-      // Also check if the element itself contains a price
-      if (element.textContent.match(/£[\d.]+/) && !element.hasAttribute('data-addon-total-original')) {
-        if (this.updatePriceElement(element, totalAddonPrice)) {
-          element.classList.add('total-updated');
-          element.setAttribute('data-addon-total-original', 'true');
-          this.logger.log('Updated total element directly');
-        }
-      }
     });
+    
+    if (!updated) {
+      this.logger.log('No cart total elements found to update');
+    }
   }
 
   calculateTotalAddonPrice() {
