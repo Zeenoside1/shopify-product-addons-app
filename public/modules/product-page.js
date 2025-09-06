@@ -1,12 +1,14 @@
 // Product page addon handling
 import { ApiClient } from './api-client.js';
 import { ProductDetector } from './product-detector.js';
+import { AddonStorage } from './addon-storage.js';
 
 export class ProductPageHandler {
   constructor(logger) {
     this.logger = logger;
     this.apiClient = new ApiClient(logger);
     this.productDetector = new ProductDetector(logger);
+    this.addonStorage = new AddonStorage(logger);
   }
 
   async init() {
@@ -243,9 +245,9 @@ export class ProductPageHandler {
       selectedValue = element.value;
     }
 
-    this.logger.log(`Addon ${addonId} changed. Value: ${selectedValue}, Price: £${price}`);
+    this.logger.log(`🔧 DEBUG: Addon ${addonId} changed. Value: ${selectedValue}, Price: £${price}`);
     
-    // Store addon selection
+    // Store addon selection in memory
     window.productAddons = window.productAddons || {};
     window.productAddons[addonId] = {
       selected: element.type === 'checkbox' ? element.checked : element.value !== '',
@@ -253,6 +255,28 @@ export class ProductPageHandler {
       value: selectedValue,
       name: element.closest('.addon-item').querySelector('label').textContent.replace(':', '').trim()
     };
+
+    this.logger.log('📦 DEBUG: Current window.productAddons:', window.productAddons);
+
+    // Store in session storage for cart page retrieval
+    const productId = this.productDetector.getProductId();
+    this.logger.log('🔍 DEBUG: Product ID for storage:', productId);
+    
+    if (productId) {
+      this.logger.log('💾 DEBUG: About to call storeProductAddons...');
+      const storedData = this.addonStorage.storeProductAddons(productId, window.productAddons);
+      this.logger.log('💾 DEBUG: Storage result:', storedData);
+      
+      // Verify it was stored
+      const verification = this.addonStorage.getProductAddons(productId);
+      this.logger.log('✅ DEBUG: Verification - data retrieved:', verification);
+      
+      // Double-check raw session storage
+      const rawStorage = sessionStorage.getItem('productAddons');
+      this.logger.log('🗄️ DEBUG: Raw session storage:', rawStorage);
+    } else {
+      this.logger.error('❌ DEBUG: No product ID found - cannot store addons');
+    }
 
     this.updateTotalPrice();
     this.updateCartProperties();
