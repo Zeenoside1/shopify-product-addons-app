@@ -618,11 +618,19 @@ app.get('/', (req, res) => {
   }
 });
 
-// Serve the frontend script
+// Serve the frontend script with module support
 app.get('/product-addons.js', (req, res) => {
-  res.setHeader('Content-Type', 'application/javascript');
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.sendFile(__dirname + '/public/product-addons.js');
+});
+
+// NEW: Serve module files
+app.get('/modules/:filename', (req, res) => {
+  const filename = req.params.filename;
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.sendFile(__dirname + '/public/modules/' + filename);
 });
 
 // Error handling middleware
