@@ -170,7 +170,7 @@ export class CartPageHandler {
         this.logger.log('⚠️  No addon prices found in stored data');
         // Fallback to text parsing if no stored data
         this.logger.log('Falling back to text parsing...');
-        this.fallbackToTextParsing(cartItems);
+        // this.fallbackToTextParsing(cartItems);
       }
       
     } finally {
