@@ -417,7 +417,7 @@ export class CartPageHandler {
     });
     
     // If no specific selectors worked, try a broader approach
-    if (!updated) {
+    if (false) { //!updated) {
       this.logger.log('🔍 No specific selectors worked, trying broader approach...');
       
       // Look for text containing "Estimated total" or "Total"
