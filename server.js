@@ -542,11 +542,43 @@ app.post('/api/addons', async (req, res) => {
 
 app.put('/api/addons/:id', async (req, res) => {
   try {
-    const addon = await db.updateAddon(req.params.id, req.body);
-    res.json(addon);
+    const addonId = req.params.id;
+    const updateData = req.body;
+    
+    console.log('🔧 Updating addon:', addonId, 'with data:', updateData);
+    
+    // Validate and clean the update data
+    const cleanedData = {};
+    
+    if (updateData.name !== undefined) {
+      cleanedData.name = updateData.name;
+    }
+    
+    if (updateData.price !== undefined) {
+      cleanedData.price = parseFloat(updateData.price);
+    }
+    
+    if (updateData.type !== undefined) {
+      cleanedData.type = updateData.type;
+    }
+    
+    if (updateData.required !== undefined) {
+      // Ensure boolean type
+      cleanedData.required = Boolean(updateData.required);
+    }
+    
+    if (updateData.options !== undefined) {
+      cleanedData.options = updateData.options;
+    }
+    
+    console.log('🔧 Cleaned update data:', cleanedData);
+    
+    const result = await db.updateAddon(addonId, cleanedData);
+    console.log('✅ Addon updated successfully:', addonId);
+    res.json(result);
   } catch (error) {
-    console.error('Error updating addon:', error);
-    res.status(500).json({ error: 'Failed to update addon' });
+    console.error('❌ Error updating addon:', error);
+    res.status(500).json({ error: 'Failed to update addon', details: error.message });
   }
 });
 

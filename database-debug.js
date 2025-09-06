@@ -454,19 +454,25 @@ class Database {
       let paramCount = 1;
       
       Object.keys(updateData).forEach(key => {
+        // Map camelCase to snake_case for PostgreSQL
+        let columnName = key;
+        if (key === 'productId') {
+          columnName = 'product_id';
+        }
+        
         if (key === 'options') {
-          fields.push(`options = $${paramCount}`);
+          fields.push(`${columnName} = $${paramCount}`);
           values.push(JSON.stringify(updateData[key]));
         } else if (key === 'required') {
           // Ensure boolean type for PostgreSQL
-          fields.push(`required = $${paramCount}`);
+          fields.push(`${columnName} = $${paramCount}`);
           values.push(Boolean(updateData[key]));
         } else if (key === 'price') {
           // Ensure numeric type
-          fields.push(`price = $${paramCount}`);
+          fields.push(`${columnName} = $${paramCount}`);
           values.push(parseFloat(updateData[key]));
         } else {
-          fields.push(`${key} = $${paramCount}`);
+          fields.push(`${columnName} = $${paramCount}`);
           values.push(updateData[key]);
         }
         paramCount++;
