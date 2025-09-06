@@ -75,21 +75,15 @@ export class CartPageHandler {
   watchForCartUpdates() {
     // Intercept fetch requests for cart updates with throttling
     const originalFetch = window.fetch;
-    let fetchTimeout;
     
     window.fetch = async (...args) => {
       const response = await originalFetch.apply(this, args);
       
       const url = args[0];
       if (typeof url === 'string' && (url.includes('/cart') || url.includes('cart.js'))) {
-        clearTimeout(fetchTimeout);
-        fetchTimeout = setTimeout(() => {
-          if (!this.updateInProgress) {
-            // Clear processed elements on cart changes
-            this.processedElements.clear();
-            this.updateCartPagePrices();
-          }
-        }, 1500);
+        // Clear processed elements on cart changes and use debounced update
+        this.processedElements.clear();
+        this.debouncedUpdate();
       }
       
       return response;
