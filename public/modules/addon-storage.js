@@ -8,12 +8,16 @@ export class AddonStorage {
   // Store addons for a specific product
   storeProductAddons(productId, addons) {
     try {
+      this.logger.log('💾 storeProductAddons called:', { productId, addons });
+      
       let storage = this.getStorage();
+      this.logger.log('💾 Current storage before update:', storage);
       
       const selectedAddons = [];
       let totalPrice = 0;
 
       Object.values(addons).forEach(addon => {
+        this.logger.log('💾 Processing addon:', addon);
         if (addon.selected) {
           selectedAddons.push({
             name: addon.name,
@@ -30,12 +34,18 @@ export class AddonStorage {
         timestamp: Date.now()
       };
 
+      this.logger.log('💾 Storing in sessionStorage:', storage);
       sessionStorage.setItem(this.storageKey, JSON.stringify(storage));
-      this.logger.log('Stored addons for product', productId, ':', selectedAddons, 'Total: £' + totalPrice);
+      
+      // Verify storage
+      const verification = sessionStorage.getItem(this.storageKey);
+      this.logger.log('💾 Verification - raw storage:', verification);
+      
+      this.logger.log('✅ Stored addons for product', productId, ':', selectedAddons, 'Total: £' + totalPrice);
       
       return { addons: selectedAddons, totalPrice };
     } catch (error) {
-      this.logger.error('Failed to store addons:', error);
+      this.logger.error('❌ Failed to store addons:', error);
       return null;
     }
   }
