@@ -455,10 +455,18 @@ class Database {
       
       Object.keys(updateData).forEach(key => {
         if (key === 'options') {
-          fields.push(`options = ${paramCount}`);
+          fields.push(`options = $${paramCount}`);
           values.push(JSON.stringify(updateData[key]));
+        } else if (key === 'required') {
+          // Ensure boolean type for PostgreSQL
+          fields.push(`required = $${paramCount}`);
+          values.push(Boolean(updateData[key]));
+        } else if (key === 'price') {
+          // Ensure numeric type
+          fields.push(`price = $${paramCount}`);
+          values.push(parseFloat(updateData[key]));
         } else {
-          fields.push(`${key} = ${paramCount}`);
+          fields.push(`${key} = $${paramCount}`);
           values.push(updateData[key]);
         }
         paramCount++;
@@ -467,7 +475,10 @@ class Database {
       fields.push('updated_at = CURRENT_TIMESTAMP');
       values.push(id);
       
-      const query = `UPDATE addons SET ${fields.join(', ')} WHERE id = ${paramCount}`;
+      const query = `UPDATE addons SET ${fields.join(', ')} WHERE id = $${paramCount}`;
+      console.log('🔧 PostgreSQL update query:', query);
+      console.log('🔧 PostgreSQL update values:', values);
+      
       await this.pool.query(query, values);
       
       console.log('✅ Addon updated in PostgreSQL:', id);
@@ -481,6 +492,14 @@ class Database {
           if (key === 'options') {
             fields.push(`${key} = ?`);
             values.push(JSON.stringify(updateData[key]));
+          } else if (key === 'required') {
+            // Ensure boolean type for SQLite
+            fields.push(`${key} = ?`);
+            values.push(updateData[key] ? 1 : 0);
+          } else if (key === 'price') {
+            // Ensure numeric type
+            fields.push(`${key} = ?`);
+            values.push(parseFloat(updateData[key]));
           } else {
             fields.push(`${key} = ?`);
             values.push(updateData[key]);
@@ -490,7 +509,11 @@ class Database {
         fields.push('updated_at = CURRENT_TIMESTAMP');
         values.push(id);
         
-        const stmt = this.db.prepare(`UPDATE addons SET ${fields.join(', ')} WHERE id = ?`);
+        const query = `UPDATE addons SET ${fields.join(', ')} WHERE id = ?`;
+        console.log('🔧 SQLite update query:', query);
+        console.log('🔧 SQLite update values:', values);
+        
+        const stmt = this.db.prepare(query);
         
         stmt.run(values, function(err) {
           if (err) {

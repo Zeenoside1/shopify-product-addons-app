@@ -586,13 +586,17 @@
                         return;
                     }
 
-                    // Populate the form with current values
+                    console.log('Editing addon:', addon);
+
+                    // Reset form first
+                    this.resetForm();
+
+                    // Populate basic fields - SET TYPE FIRST
                     document.getElementById('addon-name').value = addon.name;
                     document.getElementById('addon-type').value = addon.type;
-                    document.getElementById('addon-price').value = addon.price;
                     document.getElementById('addon-required').checked = addon.required;
 
-                    // Handle dropdown options if it's a dropdown type
+                    // Handle type-specific setup BEFORE setting price
                     if (addon.type === 'dropdown' && addon.options) {
                         this.toggleDropdownOptions(true);
                         const container = document.getElementById('options-container');
@@ -601,8 +605,15 @@
                         addon.options.forEach(option => {
                             this.addDropdownOption(option.label, option.price || 0);
                         });
+                        
+                        // For dropdowns, price should remain 0
+                        document.getElementById('addon-price').value = '0';
                     } else {
+                        // For checkboxes, ensure dropdown options are hidden first
                         this.toggleDropdownOptions(false);
+                        
+                        // Then set the price (this needs to happen AFTER toggleDropdownOptions)
+                        document.getElementById('addon-price').value = addon.price;
                     }
 
                     // Change form to edit mode
@@ -707,15 +718,19 @@
                     priceField.readOnly = true;
                     priceField.style.backgroundColor = '#f6f6f7';
                     
-                    // Add first option if none exist
-                    if (!container.querySelector('.option-row')) {
+                    // Add first option if none exist (only for new dropdowns)
+                    if (!container.querySelector('.option-row') && !this.editingAddonId) {
                         this.addDropdownOption();
                     }
                 } else {
                     // For checkboxes, allow price editing
                     priceField.readOnly = false;
                     priceField.style.backgroundColor = 'white';
-                    priceField.value = '';
+                    
+                    // Don't clear the price here - let the edit function handle it
+                    if (!this.editingAddonId) {
+                        priceField.value = '';
+                    }
                 }
             }
 
