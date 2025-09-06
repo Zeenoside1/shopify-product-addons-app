@@ -9,6 +9,7 @@
   
   // Prevent double initialization
   let isInitialized = false;
+  let cartUpdateInProgress = false;
   
   function log(...args) {
     if (DEBUG) console.log('[Product Add-ons]', ...args);
@@ -319,19 +320,25 @@
   function initCartPageUpdates() {
     log('Initializing cart page updates...');
     
-    // Update cart prices on load
+    // Update cart prices on load with delay
     setTimeout(() => {
-      updateCartPagePrices();
-    }, 1000); // Delay to ensure page is fully loaded
+      if (!cartUpdateInProgress) {
+        updateCartPagePrices();
+      }
+    }, 1500); // Longer delay to ensure page is fully loaded
     
     // Watch for cart updates
     watchForCartUpdates();
     
-    // Set up mutation observer for dynamic content
+    // Set up mutation observer for dynamic content with throttling
+    let mutationTimeout;
     const observer = new MutationObserver(() => {
-      setTimeout(() => {
-        updateCartPagePrices();
-      }, 100); // Small delay for DOM updates
+      clearTimeout(mutationTimeout);
+      mutationTimeout = setTimeout(() => {
+        if (!cartUpdateInProgress) {
+          updateCartPagePrices();
+        }
+      }, 500); // Throttle mutations
     });
     
     observer.observe(document.body, {
@@ -360,24 +367,34 @@
 
   // NEW: Update prices on cart page
   function updateCartPagePrices() {
+    if (cartUpdateInProgress) {
+      log('Cart update already in progress, skipping');
+      return;
+    }
+    
+    cartUpdateInProgress = true;
     log('Updating cart page prices...');
     
-    const cartItems = document.querySelectorAll('[data-cart-item], .cart-item, .cart__item, .line-item');
-    
-    cartItems.forEach(item => {
-      try {
-        // Look for addon properties in the item
-        const properties = extractAddonProperties(item);
-        if (properties.totalAddonPrice > 0) {
-          updateCartItemPrice(item, properties);
+    try {
+      const cartItems = document.querySelectorAll('[data-cart-item], .cart-item, .cart__item, .line-item');
+      
+      cartItems.forEach(item => {
+        try {
+          // Look for addon properties in the item
+          const properties = extractAddonProperties(item);
+          if (properties.totalAddonPrice > 0) {
+            updateCartItemPrice(item, properties);
+          }
+        } catch (error) {
+          log('Error updating cart item price:', error);
         }
-      } catch (error) {
-        log('Error updating cart item price:', error);
-      }
-    });
-    
-    // Update cart total
-    updateCartTotal();
+      });
+      
+      // Update cart total
+      updateCartTotal();
+    } finally {
+      cartUpdateInProgress = false;
+    }
   }
 
   // NEW: Update prices on checkout page
@@ -424,7 +441,7 @@
       elements.forEach(element => {
         const text = element.textContent || element.innerText || '';
         
-        // Look for various price patterns
+        // Look for various price patterns - but only count each addon once
         const pricePatterns = [
           /\+£([\d.]+)/,           // +£65.00
           /\(\+£([\d.]+)\)/,       // (+£65.00)
@@ -437,26 +454,20 @@
           if (priceMatch) {
             const price = parseFloat(priceMatch[1]);
             if (price > 0) {
-              properties.addons.push({
-                name: text.replace(pattern, '').trim(),
-                price: price
-              });
-              properties.totalAddonPrice += price;
+              const addonName = text.replace(pattern, '').trim();
+              // Only add if we haven't seen this addon already
+              if (!properties.addons.some(addon => addon.name === addonName)) {
+                properties.addons.push({
+                  name: addonName,
+                  price: price
+                });
+                properties.totalAddonPrice += price;
+              }
             }
           }
         });
       });
     });
-    
-    // Also check the entire item text for addon info
-    const itemText = item.textContent || item.innerText || '';
-    const totalMatch = itemText.match(/Total.*£([\d.]+).*add-on/i);
-    if (totalMatch) {
-      const total = parseFloat(totalMatch[1]);
-      if (total > properties.totalAddonPrice) {
-        properties.totalAddonPrice = total;
-      }
-    }
     
     log('Extracted addon properties:', properties);
     return properties;
@@ -479,9 +490,10 @@
     priceSelectors.forEach(selector => {
       const priceElements = item.querySelectorAll(selector);
       priceElements.forEach(element => {
-        if (!element.classList.contains('addon-updated')) {
+        if (!element.classList.contains('addon-updated') && !element.hasAttribute('data-addon-original')) {
           updatePriceElement(element, properties.totalAddonPrice);
           element.classList.add('addon-updated');
+          element.setAttribute('data-addon-original', 'true');
         }
       });
     });
@@ -503,9 +515,10 @@
     priceSelectors.forEach(selector => {
       const priceElements = item.querySelectorAll(selector);
       priceElements.forEach(element => {
-        if (!element.classList.contains('addon-updated')) {
+        if (!element.classList.contains('addon-updated') && !element.hasAttribute('data-addon-original')) {
           updatePriceElement(element, properties.totalAddonPrice);
           element.classList.add('addon-updated');
+          element.setAttribute('data-addon-original', 'true');
         }
       });
     });
@@ -516,7 +529,12 @@
     const originalText = element.textContent || element.innerText || '';
     
     // Skip if already updated
-    if (originalText.includes('(incl.') || originalText.includes('add-ons')) return;
+    if (originalText.includes('(incl.') || originalText.includes('add-ons') || element.hasAttribute('data-addon-original')) {
+      return;
+    }
+    
+    // Store original text
+    element.setAttribute('data-original-text', originalText);
     
     // Extract current price
     const priceMatch = originalText.match(/(£|$|€)([\d,]+\.?\d*)/);
@@ -536,94 +554,56 @@
     }
   }
 
-  // ENHANCED: Update cart total with better selectors
+  // ENHANCED: Update cart total with better selectors and duplicate prevention
   function updateCartTotal() {
     log('Updating cart total...');
     
     let totalAddonPrice = 0;
+    const processedElements = new Set();
     
-    // Calculate total addon price from all updated items
+    // Calculate total addon price from all updated items - but avoid double counting
     document.querySelectorAll('.addon-updated').forEach(element => {
-      const text = element.textContent || '';
-      const addonMatch = text.match(/\+£([\d.]+) add-ons/);
-      if (addonMatch) {
-        totalAddonPrice += parseFloat(addonMatch[1]);
+      const elementId = element.outerHTML; // Use outerHTML as unique identifier
+      if (!processedElements.has(elementId)) {
+        processedElements.add(elementId);
+        
+        const text = element.textContent || '';
+        const addonMatch = text.match(/\+£([\d.]+) add-ons/);
+        if (addonMatch) {
+          totalAddonPrice += parseFloat(addonMatch[1]);
+        }
       }
     });
     
     log('Total addon price calculated:', totalAddonPrice);
     
     if (totalAddonPrice > 0) {
-      // Enhanced selectors for different cart themes
-      const totalSelectors = [
-        // Common cart total selectors
-        '.cart-subtotal',
-        '.cart-total',
-        '.cart__total',
-        '.subtotal',
-        '[data-cart-total]',
-        
-        // More specific selectors based on your theme
-        '.totals__subtotal',
-        '.totals__total',
-        '.cart-totals',
-        '.cart-footer',
-        '.cart-summary',
-        
-        // Text-based selectors
-        '*:contains("Estimated total")',
-        '*:contains("Subtotal")',
-        '*:contains("Total")',
-        
-        // Look for price elements near "total" text
-        '.cart .total',
-        '.cart .subtotal',
-        '[class*="total"]',
-        '[class*="subtotal"]'
-      ];
-      
-      // Also search by proximity to "total" text
+      // Find total elements that haven't been updated yet
       const totalTextElements = Array.from(document.querySelectorAll('*')).filter(el => {
         const text = el.textContent.toLowerCase();
-        return text.includes('estimated total') || 
-               text.includes('subtotal') || 
-               (text.includes('total') && !text.includes('quantity'));
+        return (text.includes('estimated total') || text.includes('subtotal')) && 
+               !el.classList.contains('total-updated') &&
+               !el.hasAttribute('data-addon-total-original');
       });
       
       totalTextElements.forEach(element => {
         // Look for price elements within or near this element
         const nearbyPrices = element.querySelectorAll('.money, [data-price], .price');
         nearbyPrices.forEach(priceEl => {
-          if (!priceEl.classList.contains('total-updated')) {
+          if (!priceEl.classList.contains('total-updated') && !priceEl.hasAttribute('data-addon-total-original')) {
             updatePriceElement(priceEl, totalAddonPrice);
             priceEl.classList.add('total-updated');
+            priceEl.setAttribute('data-addon-total-original', 'true');
             log('Updated total via proximity search');
           }
         });
         
         // Also check if the element itself contains a price
-        if (element.textContent.match(/£[\d.]+/)) {
-          if (!element.classList.contains('total-updated')) {
-            updatePriceElement(element, totalAddonPrice);
-            element.classList.add('total-updated');
-            log('Updated total element directly');
-          }
-        }
-      });
-      
-      // Traditional selector approach
-      totalSelectors.forEach(selector => {
-        try {
-          const elements = document.querySelectorAll(selector);
-          elements.forEach(element => {
-            if (!element.classList.contains('total-updated')) {
-              updatePriceElement(element, totalAddonPrice);
-              element.classList.add('total-updated');
-              log('Updated total via selector:', selector);
-            }
-          });
-        } catch (e) {
-          // Ignore selector errors
+        if (element.textContent.match(/£[\d.]+/) && !element.hasAttribute('data-addon-total-original')) {
+          updatePriceElement(element, totalAddonPrice);
+          element.classList.add('total-updated');
+          element.setAttribute('data-addon-total-original', 'true');
+          log('Updated total element directly');
         }
       });
     }
@@ -675,8 +655,10 @@
       if (typeof url === 'string' && (url.includes('/cart') || url.includes('cart.js'))) {
         // Wait a bit for the DOM to update, then refresh prices
         setTimeout(() => {
-          updateCartPagePrices();
-        }, 500);
+          if (!cartUpdateInProgress) {
+            updateCartPagePrices();
+          }
+        }, 1000);
       }
       
       return response;
@@ -721,93 +703,94 @@
       <div id="addon-list"></div>
     `;
 
-    // Add styling
-    const style = document.createElement('style');
-    style.textContent = `
-      .product-addons {
-        margin: 20px 0;
-        padding: 20px;
-        border: 2px solid #007ace;
-        border-radius: 8px;
-        background: #f8fdff;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      }
-      .addon-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 16px;
-        padding-bottom: 12px;
-        border-bottom: 1px solid #007ace;
-      }
-      .addon-header h3 {
-        margin: 0;
-        font-size: 18px;
-        font-weight: 600;
-        color: #007ace;
-      }
-      .addon-total {
-        font-weight: bold;
-        font-size: 16px;
-        color: #007ace;
-      }
-      .addon-item {
-        margin: 12px 0;
-        padding: 16px;
-        background: white;
-        border: 1px solid #ddd;
-        border-radius: 6px;
-        transition: border-color 0.2s;
-      }
-      .addon-item:hover {
-        border-color: #007ace;
-      }
-      .addon-option {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-      .addon-option label {
-        font-weight: 500;
-        color: #333;
-        cursor: pointer;
-        flex: 1;
-      }
-      .addon-price {
-        font-weight: bold;
-        color: #007ace;
-        font-size: 14px;
-      }
-      .addon-checkbox, .addon-dropdown {
-        margin: 0;
-        transform: scale(1.1);
-      }
-      .addon-dropdown {
-        min-width: 180px;
-        padding: 8px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background: white;
-        font-size: 14px;
-      }
-      
-      /* Enhanced cart/checkout styling */
-      .addon-updated {
-        color: #007ace !important;
-        font-weight: 500;
-      }
-      
-      .total-updated {
-        background: #f0f9ff !important;
-        padding: 2px 4px;
-        border-radius: 3px;
-        color: #007ace !important;
-        font-weight: 600 !important;
-      }
-    `;
-    
+    // Add styling - make sure it's properly contained
     if (!document.getElementById('addon-styles')) {
+      const style = document.createElement('style');
       style.id = 'addon-styles';
+      style.textContent = `
+        .product-addons {
+          margin: 20px 0;
+          padding: 20px;
+          border: 2px solid #007ace;
+          border-radius: 8px;
+          background: #f8fdff;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        .product-addons .addon-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid #007ace;
+        }
+        .product-addons .addon-header h3 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 600;
+          color: #007ace;
+        }
+        .product-addons .addon-total {
+          font-weight: bold;
+          font-size: 16px;
+          color: #007ace;
+        }
+        .product-addons .addon-item {
+          margin: 12px 0;
+          padding: 16px;
+          background: white;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          transition: border-color 0.2s;
+        }
+        .product-addons .addon-item:hover {
+          border-color: #007ace;
+        }
+        .product-addons .addon-option {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .product-addons .addon-option label {
+          font-weight: 500;
+          color: #333;
+          cursor: pointer;
+          flex: 1;
+        }
+        .product-addons .addon-price {
+          font-weight: bold;
+          color: #007ace;
+          font-size: 14px;
+        }
+        .product-addons .addon-checkbox, 
+        .product-addons .addon-dropdown {
+          margin: 0;
+          transform: scale(1.1);
+        }
+        .product-addons .addon-dropdown {
+          min-width: 180px;
+          padding: 8px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          background: white;
+          font-size: 14px;
+        }
+        
+        /* Enhanced cart/checkout styling - more specific selectors */
+        .addon-updated {
+          color: #007ace !important;
+          font-weight: 500;
+        }
+        
+        .total-updated {
+          background: #f0f9ff !important;
+          padding: 2px 4px;
+          border-radius: 3px;
+          color: #007ace !important;
+          font-weight: 600 !important;
+        }
+      `;
+      
       document.head.appendChild(style);
     }
 
