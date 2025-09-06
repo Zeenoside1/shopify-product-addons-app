@@ -320,14 +320,18 @@
     log('Initializing cart page updates...');
     
     // Update cart prices on load
-    updateCartPagePrices();
+    setTimeout(() => {
+      updateCartPagePrices();
+    }, 1000); // Delay to ensure page is fully loaded
     
     // Watch for cart updates
     watchForCartUpdates();
     
     // Set up mutation observer for dynamic content
     const observer = new MutationObserver(() => {
-      updateCartPagePrices();
+      setTimeout(() => {
+        updateCartPagePrices();
+      }, 100); // Small delay for DOM updates
     });
     
     observer.observe(document.body, {
@@ -356,6 +360,8 @@
 
   // NEW: Update prices on cart page
   function updateCartPagePrices() {
+    log('Updating cart page prices...');
+    
     const cartItems = document.querySelectorAll('[data-cart-item], .cart-item, .cart__item, .line-item');
     
     cartItems.forEach(item => {
@@ -408,36 +414,51 @@
       '.cart-attribute',
       '.product-property',
       '.custom-property',
-      '.variant-option'
+      '.variant-option',
+      'dd', // Common for definition lists
+      'li'  // List items that might contain properties
     ];
     
     propertySelectors.forEach(selector => {
       const elements = item.querySelectorAll(selector);
       elements.forEach(element => {
         const text = element.textContent || element.innerText || '';
-        const priceMatch = text.match(/\+£([\d.]+)/);
-        if (priceMatch) {
-          const price = parseFloat(priceMatch[1]);
-          properties.addons.push({
-            name: text.replace(/\+£[\d.]+/, '').trim(),
-            price: price
-          });
-          properties.totalAddonPrice += price;
-        }
+        
+        // Look for various price patterns
+        const pricePatterns = [
+          /\+£([\d.]+)/,           // +£65.00
+          /\(\+£([\d.]+)\)/,       // (+£65.00)
+          /£([\d.]+) add-ons?/i,   // £65.00 add-ons
+          /addon.*£([\d.]+)/i      // addon £65.00
+        ];
+        
+        pricePatterns.forEach(pattern => {
+          const priceMatch = text.match(pattern);
+          if (priceMatch) {
+            const price = parseFloat(priceMatch[1]);
+            if (price > 0) {
+              properties.addons.push({
+                name: text.replace(pattern, '').trim(),
+                price: price
+              });
+              properties.totalAddonPrice += price;
+            }
+          }
+        });
       });
     });
     
-    // Also check for hidden inputs or data attributes
-    const inputs = item.querySelectorAll('input[name*="properties"]');
-    inputs.forEach(input => {
-      const value = input.value || '';
-      const priceMatch = value.match(/\+£([\d.]+)/);
-      if (priceMatch) {
-        const price = parseFloat(priceMatch[1]);
-        properties.totalAddonPrice += price;
+    // Also check the entire item text for addon info
+    const itemText = item.textContent || item.innerText || '';
+    const totalMatch = itemText.match(/Total.*£([\d.]+).*add-on/i);
+    if (totalMatch) {
+      const total = parseFloat(totalMatch[1]);
+      if (total > properties.totalAddonPrice) {
+        properties.totalAddonPrice = total;
       }
-    });
+    }
     
+    log('Extracted addon properties:', properties);
     return properties;
   }
 
@@ -451,7 +472,8 @@
       '.cart-item__price',
       '.line-item__price',
       '.money',
-      '[data-price]'
+      '[data-price]',
+      '.total' // Add this for your theme
     ];
     
     priceSelectors.forEach(selector => {
@@ -494,7 +516,7 @@
     const originalText = element.textContent || element.innerText || '';
     
     // Skip if already updated
-    if (originalText.includes('(+£')) return;
+    if (originalText.includes('(incl.') || originalText.includes('add-ons')) return;
     
     // Extract current price
     const priceMatch = originalText.match(/(£|$|€)([\d,]+\.?\d*)/);
@@ -514,37 +536,95 @@
     }
   }
 
-  // NEW: Update cart total
+  // ENHANCED: Update cart total with better selectors
   function updateCartTotal() {
+    log('Updating cart total...');
+    
     let totalAddonPrice = 0;
     
-    // Sum up all addon prices
+    // Calculate total addon price from all updated items
     document.querySelectorAll('.addon-updated').forEach(element => {
       const text = element.textContent || '';
-      const addonMatch = text.match(/\+£([\d.]+)/);
+      const addonMatch = text.match(/\+£([\d.]+) add-ons/);
       if (addonMatch) {
         totalAddonPrice += parseFloat(addonMatch[1]);
       }
     });
     
+    log('Total addon price calculated:', totalAddonPrice);
+    
     if (totalAddonPrice > 0) {
-      // Update cart total elements
+      // Enhanced selectors for different cart themes
       const totalSelectors = [
+        // Common cart total selectors
         '.cart-subtotal',
         '.cart-total',
         '.cart__total',
         '.subtotal',
-        '[data-cart-total]'
+        '[data-cart-total]',
+        
+        // More specific selectors based on your theme
+        '.totals__subtotal',
+        '.totals__total',
+        '.cart-totals',
+        '.cart-footer',
+        '.cart-summary',
+        
+        // Text-based selectors
+        '*:contains("Estimated total")',
+        '*:contains("Subtotal")',
+        '*:contains("Total")',
+        
+        // Look for price elements near "total" text
+        '.cart .total',
+        '.cart .subtotal',
+        '[class*="total"]',
+        '[class*="subtotal"]'
       ];
       
-      totalSelectors.forEach(selector => {
-        const elements = document.querySelectorAll(selector);
-        elements.forEach(element => {
+      // Also search by proximity to "total" text
+      const totalTextElements = Array.from(document.querySelectorAll('*')).filter(el => {
+        const text = el.textContent.toLowerCase();
+        return text.includes('estimated total') || 
+               text.includes('subtotal') || 
+               (text.includes('total') && !text.includes('quantity'));
+      });
+      
+      totalTextElements.forEach(element => {
+        // Look for price elements within or near this element
+        const nearbyPrices = element.querySelectorAll('.money, [data-price], .price');
+        nearbyPrices.forEach(priceEl => {
+          if (!priceEl.classList.contains('total-updated')) {
+            updatePriceElement(priceEl, totalAddonPrice);
+            priceEl.classList.add('total-updated');
+            log('Updated total via proximity search');
+          }
+        });
+        
+        // Also check if the element itself contains a price
+        if (element.textContent.match(/£[\d.]+/)) {
           if (!element.classList.contains('total-updated')) {
             updatePriceElement(element, totalAddonPrice);
             element.classList.add('total-updated');
+            log('Updated total element directly');
           }
-        });
+        }
+      });
+      
+      // Traditional selector approach
+      totalSelectors.forEach(selector => {
+        try {
+          const elements = document.querySelectorAll(selector);
+          elements.forEach(element => {
+            if (!element.classList.contains('total-updated')) {
+              updatePriceElement(element, totalAddonPrice);
+              element.classList.add('total-updated');
+              log('Updated total via selector:', selector);
+            }
+          });
+        } catch (e) {
+          // Ignore selector errors
+        }
       });
     }
   }
@@ -718,9 +798,11 @@
       }
       
       .total-updated {
-        background: #f0f9ff;
+        background: #f0f9ff !important;
         padding: 2px 4px;
         border-radius: 3px;
+        color: #007ace !important;
+        font-weight: 600 !important;
       }
     `;
     
