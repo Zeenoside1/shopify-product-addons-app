@@ -4,7 +4,7 @@ export const AddonConfig = {
   // Create a hidden product in Shopify admin with £0.01 price
   HIDDEN_PRODUCT: {
     PRODUCT_ID: '12237829308756',  // Replace with actual product ID
-    VARIANT_ID: '12237829308756',  // Replace with actual variant ID
+    VARIANT_ID: '52557455032660',  // Replace with actual variant ID
     PRICE: 0.01,                   // £0.01 per unit
     SKU: 'ADDON-PRICE-01',         // SKU for identification
     TITLE: 'Product Add-on Price Adjustment'
