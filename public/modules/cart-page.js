@@ -1,15 +1,16 @@
-// Cart page addon price handling - Hidden Product Approach
+// Cart page addon price handling - Debug Version for Variant Testing
 import { AddonStorage } from './addon-storage.js';
+import { AddonConfig } from './addon-config.js';
 
 export class CartPageHandler {
   constructor(logger) {
     this.logger = logger;
     this.addonStorage = new AddonStorage(logger);
     
-    // CRITICAL: Set your hidden product details here
-    this.HIDDEN_PRODUCT_ID = '12345678901234'; // Replace with your actual hidden product ID
-    this.HIDDEN_VARIANT_ID = '12345678901234'; // Replace with your actual hidden variant ID
-    this.HIDDEN_PRODUCT_PRICE = 0.01; // £0.01 per unit
+    // Use config values
+    this.HIDDEN_PRODUCT_ID = AddonConfig.HIDDEN_PRODUCT.PRODUCT_ID;
+    this.HIDDEN_VARIANT_ID = AddonConfig.HIDDEN_PRODUCT.VARIANT_ID;
+    this.HIDDEN_PRODUCT_PRICE = AddonConfig.HIDDEN_PRODUCT.PRICE;
     
     this.processedProducts = new Set();
   }
@@ -22,15 +23,150 @@ export class CartPageHandler {
       unitPrice: this.HIDDEN_PRODUCT_PRICE
     });
     
-    // Check and sync cart with stored addon data
+    // First test if we can access the variant
     setTimeout(() => {
-      this.syncCartWithAddons();
+      this.testVariantAccess();
     }, 500);
   }
 
-  async syncCartWithAddons() {
+  async testVariantAccess() {
+    this.logger.log('Testing variant accessibility...');
+    
+    try {
+      // Test 1: Try to fetch product info via AJAX
+      const productResponse = await fetch(`/products/${this.HIDDEN_PRODUCT_ID}.js`);
+      if (productResponse.ok) {
+        const productData = await productResponse.json();
+        this.logger.log('✅ Product accessible via AJAX:', productData);
+        
+        // Check if our variant exists in the product data
+        const variant = productData.variants.find(v => v.id.toString() === this.HIDDEN_VARIANT_ID);
+        if (variant) {
+          this.logger.log('✅ Variant found in product data:', variant);
+          
+          // Now try the cart sync
+          this.syncCartWithAddons();
+        } else {
+          this.logger.error('❌ Variant not found in product data. Available variants:', 
+            productData.variants.map(v => ({ id: v.id, title: v.title, available: v.available })));
+        }
+      } else {
+        this.logger.error('❌ Product not accessible via AJAX:', productResponse.status);
+        
+        // Try alternative method
+        this.testAlternativeVariantAccess();
+      }
+    } catch (error) {
+      this.logger.error('❌ Error testing variant access:', error);
+      this.testAlternativeVariantAccess();
+    }
+  }
+
+  async testAlternativeVariantAccess() {
+    this.logger.log('Testing alternative variant access methods...');
+    
+    // Test 2: Try adding with different format
+    const testMethods = [
+      {
+        name: 'Using variant ID as string',
+        data: { id: this.HIDDEN_VARIANT_ID, quantity: 1 }
+      },
+      {
+        name: 'Using variant ID as number',
+        data: { id: parseInt(this.HIDDEN_VARIANT_ID), quantity: 1 }
+      },
+      {
+        name: 'Using product ID instead',
+        data: { id: this.HIDDEN_PRODUCT_ID, quantity: 1 }
+      }
+    ];
+
+    for (const method of testMethods) {
+      try {
+        this.logger.log(`Testing: ${method.name}`, method.data);
+        
+        const formData = new FormData();
+        formData.append('id', method.data.id);
+        formData.append('quantity', method.data.quantity);
+        formData.append('properties[_test]', 'variant_accessibility_test');
+        
+        const response = await fetch('/cart/add.js', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (response.ok) {
+          this.logger.log(`✅ ${method.name} WORKS!`);
+          const result = await response.json();
+          this.logger.log('Response:', result);
+          
+          // Remove the test item
+          setTimeout(() => this.removeTestItem(), 1000);
+          
+          // Use this working method for the actual sync
+          this.syncCartWithAddons(method.data.id);
+          return;
+        } else {
+          const error = await response.text();
+          this.logger.log(`❌ ${method.name} failed:`, error);
+        }
+      } catch (error) {
+        this.logger.log(`❌ ${method.name} error:`, error);
+      }
+    }
+    
+    // If all methods fail, check product setup
+    this.suggestProductSetupFix();
+  }
+
+  async removeTestItem() {
+    try {
+      const cart = await this.getCurrentCart();
+      const testItem = cart.items.find(item => 
+        item.properties && item.properties['_test'] === 'variant_accessibility_test'
+      );
+      
+      if (testItem) {
+        const updates = {};
+        updates[testItem.key] = 0;
+        
+        await fetch('/cart/update.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ updates })
+        });
+        
+        this.logger.log('Test item removed from cart');
+      }
+    } catch (error) {
+      this.logger.log('Could not remove test item:', error);
+    }
+  }
+
+  suggestProductSetupFix() {
+    this.logger.error('🚨 PRODUCT SETUP ISSUE DETECTED 🚨');
+    this.logger.error('The hidden product variant is not accessible from the storefront.');
+    this.logger.error('');
+    this.logger.error('SOLUTION: Check these product settings in Shopify Admin:');
+    this.logger.error('1. Product Status: Must be "Active"');
+    this.logger.error('2. Product Availability: Must be available on "Online Store"');
+    this.logger.error('3. Variant Availability: Must be available');
+    this.logger.error('4. Track Quantity: Must be DISABLED');
+    this.logger.error('5. Continue selling when out of stock: Must be ENABLED');
+    this.logger.error('');
+    this.logger.error('Current config:', {
+      productId: this.HIDDEN_PRODUCT_ID,
+      variantId: this.HIDDEN_VARIANT_ID
+    });
+  }
+
+  async syncCartWithAddons(workingVariantId = null) {
     try {
       this.logger.log('Syncing cart with stored addon data...');
+      
+      // Use working variant ID if found during testing
+      const variantToUse = workingVariantId || this.HIDDEN_VARIANT_ID;
+      this.logger.log('Using variant ID:', variantToUse);
       
       // Get current cart state
       const cart = await this.getCurrentCart();
@@ -73,7 +209,8 @@ export class CartPageHandler {
       // Check if hidden product already exists in cart
       const existingHiddenItem = cart.items.find(item => 
         item.product_id.toString() === this.HIDDEN_PRODUCT_ID ||
-        item.variant_id.toString() === this.HIDDEN_VARIANT_ID
+        item.variant_id.toString() === this.HIDDEN_VARIANT_ID ||
+        item.variant_id.toString() === variantToUse
       );
       
       const neededQuantity = Math.round(totalAddonPrice / this.HIDDEN_PRODUCT_PRICE);
@@ -89,7 +226,7 @@ export class CartPageHandler {
         }
       } else {
         this.logger.log('Adding hidden product with quantity:', neededQuantity);
-        await this.addHiddenProduct(neededQuantity);
+        await this.addHiddenProduct(neededQuantity, variantToUse);
       }
       
     } catch (error) {
@@ -138,12 +275,13 @@ export class CartPageHandler {
     return null;
   }
 
-  async addHiddenProduct(quantity) {
+  async addHiddenProduct(quantity, variantId = null) {
     try {
-      this.logger.log('Adding hidden product with quantity:', quantity);
+      const idToUse = variantId || this.HIDDEN_VARIANT_ID;
+      this.logger.log('Adding hidden product with quantity:', quantity, 'using ID:', idToUse);
       
       const formData = new FormData();
-      formData.append('id', this.HIDDEN_VARIANT_ID);
+      formData.append('id', idToUse);
       formData.append('quantity', quantity);
       formData.append('properties[_addon_adjustment]', 'true');
       formData.append('properties[_note]', `Price adjustment for add-ons (${quantity} x £${this.HIDDEN_PRODUCT_PRICE})`);
@@ -164,6 +302,11 @@ export class CartPageHandler {
       } else {
         const error = await response.text();
         this.logger.error('Failed to add hidden product:', error);
+        
+        // If this was a retry with a different ID, suggest product setup fix
+        if (!variantId) {
+          this.suggestProductSetupFix();
+        }
       }
       
     } catch (error) {
@@ -201,37 +344,6 @@ export class CartPageHandler {
       
     } catch (error) {
       this.logger.error('Error updating hidden product quantity:', error);
-    }
-  }
-
-  async removeHiddenProduct() {
-    try {
-      const cart = await this.getCurrentCart();
-      if (!cart) return;
-      
-      const hiddenItem = cart.items.find(item => 
-        item.product_id.toString() === this.HIDDEN_PRODUCT_ID ||
-        item.variant_id.toString() === this.HIDDEN_VARIANT_ID
-      );
-      
-      if (hiddenItem) {
-        this.logger.log('Removing hidden product from cart');
-        
-        const updates = {};
-        updates[hiddenItem.key] = 0;
-        
-        await fetch('/cart/update.js', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ updates })
-        });
-        
-        this.logger.log('Hidden product removed from cart');
-      }
-    } catch (error) {
-      this.logger.error('Error removing hidden product:', error);
     }
   }
 }
