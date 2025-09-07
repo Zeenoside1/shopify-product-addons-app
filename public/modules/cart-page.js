@@ -216,6 +216,9 @@ export class CartPageHandler {
       if (this.isRowForVariant(row, variantId)) {
         this.logger.log(`Updating prices for variant ${variantId} with £${addonInfo.addonPrice} addons`);
         
+        // Debug: Log all text content in the row to help identify price elements
+        this.debugRowContents(row);
+        
         // Update unit price
         this.updateRowUnitPrice(row, addonInfo.addonPrice);
         
@@ -226,6 +229,35 @@ export class CartPageHandler {
         this.addAddonDetailsToRow(row, addonInfo.addons);
       }
     });
+  }
+
+  debugRowContents(row) {
+    this.logger.log('🔍 Debugging row contents:');
+    
+    // Find all elements that contain £0.00
+    const allElements = row.querySelectorAll('*');
+    allElements.forEach((element, index) => {
+      const text = element.textContent.trim();
+      if (text === '£0.00' || text.includes('0.00')) {
+        this.logger.log(`  Element ${index}: "${text}" | Tag: ${element.tagName} | Classes: ${element.className} | ID: ${element.id}`);
+        this.logger.log(`    Parent: ${element.parentElement.tagName}.${element.parentElement.className}`);
+      }
+    });
+    
+    // Also check text nodes directly
+    const walker = document.createTreeWalker(
+      row,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false
+    );
+    
+    let textNode;
+    while (textNode = walker.nextNode()) {
+      if (textNode.textContent.trim().includes('0.00')) {
+        this.logger.log(`  Text node: "${textNode.textContent.trim()}" | Parent: ${textNode.parentElement.tagName}.${textNode.parentElement.className}`);
+      }
+    }
   }
 
   isRowForVariant(row, variantId) {
