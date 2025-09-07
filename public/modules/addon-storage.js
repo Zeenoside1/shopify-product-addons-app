@@ -5,19 +5,17 @@ export class AddonStorage {
     this.storageKey = 'productAddons';
   }
 
-  // Store addons for a specific product
-  storeProductAddons(productId, addons) {
+  // Store addons for a specific product with variant/line item tracking
+  storeProductAddons(productId, addons, variantId = null) {
     try {
-      this.logger.log('💾 storeProductAddons called:', { productId, addons });
+      this.logger.log('Storing product addons:', { productId, addons, variantId });
       
       let storage = this.getStorage();
-      this.logger.log('💾 Current storage before update:', storage);
       
       const selectedAddons = [];
       let totalPrice = 0;
 
       Object.values(addons).forEach(addon => {
-        this.logger.log('💾 Processing addon:', addon);
         if (addon.selected) {
           selectedAddons.push({
             name: addon.name,
@@ -28,24 +26,52 @@ export class AddonStorage {
         }
       });
 
-      storage[productId] = {
+      // Store with both product ID and variant ID if available
+      const storageKey = variantId ? `${productId}-${variantId}` : productId;
+      
+      storage[storageKey] = {
+        productId: productId,
+        variantId: variantId,
         addons: selectedAddons,
         totalPrice: totalPrice,
         timestamp: Date.now()
       };
 
-      this.logger.log('💾 Storing in sessionStorage:', storage);
       sessionStorage.setItem(this.storageKey, JSON.stringify(storage));
-      
-      // Verify storage
-      const verification = sessionStorage.getItem(this.storageKey);
-      this.logger.log('💾 Verification - raw storage:', verification);
-      
-      this.logger.log('✅ Stored addons for product', productId, ':', selectedAddons, 'Total: £' + totalPrice);
+      this.logger.log('Stored addons for key', storageKey, ':', selectedAddons, 'Total: £' + totalPrice);
       
       return { addons: selectedAddons, totalPrice };
     } catch (error) {
-      this.logger.error('❌ Failed to store addons:', error);
+      this.logger.error('Failed to store addons:', error);
+      return null;
+    }
+  }
+
+  // Get addons for cart line items by ID matching
+  getCartAddonsByLineId(lineItemId) {
+    try {
+      const storage = this.getStorage();
+      
+      // First try to find by exact line item/variant ID
+      for (const [key, data] of Object.entries(storage)) {
+        if (data.variantId && data.variantId.toString() === lineItemId.toString()) {
+          this.logger.log('Found addons by variant ID:', lineItemId, data);
+          return data;
+        }
+      }
+      
+      // Fallback to product ID if no variant match
+      for (const [key, data] of Object.entries(storage)) {
+        if (data.productId && key.includes(data.productId)) {
+          this.logger.log('Found addons by product ID fallback:', data.productId, data);
+          return data;
+        }
+      }
+      
+      this.logger.log('No addons found for line item ID:', lineItemId);
+      return null;
+    } catch (error) {
+      this.logger.error('Failed to get cart addons by line ID:', error);
       return null;
     }
   }

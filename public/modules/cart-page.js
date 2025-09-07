@@ -1,546 +1,186 @@
-// Cart page addon price handling
+// Cart page addon price handling - ID-based approach
 import { AddonStorage } from './addon-storage.js';
 
 export class CartPageHandler {
   constructor(logger) {
     this.logger = logger;
     this.addonStorage = new AddonStorage(logger);
-    this.updateInProgress = false;
-    this.processedElements = new Set(); // Track processed elements
-    this.isolatedStylesAdded = false;
-    this.updateTimeout = null; // For debouncing
+    this.processedLineItems = new Set();
   }
 
   init() {
-    this.logger.log('Initializing cart page updates...');
+    this.logger.log('Initializing cart page updates with ID-based matching...');
     
-    // Add isolated styles first
-    this.addIsolatedStyles();
-    
-    // Debug: Check if we have any stored addon data
+    // Check what's stored
     this.debugStorageContents();
     
-    // Clean old addon data
-    this.addonStorage.clearOldAddons();
-    
-    // Initial update with delay
+    // Update cart prices
     setTimeout(() => {
-      this.debouncedUpdate();
-    }, 1500);
-    
-    // Watch for cart updates
-    this.watchForCartUpdates();
-    
-    // Set up mutation observer with throttling
-    this.setupMutationObserver();
+      this.updateCartPrices();
+    }, 500);
   }
 
   debugStorageContents() {
     try {
       const stored = sessionStorage.getItem('productAddons');
-      this.logger.log('🔍 Session storage check:');
-      this.logger.log('  Raw storage value:', stored);
+      this.logger.log('Session storage check:');
       
       if (stored) {
         const parsed = JSON.parse(stored);
-        this.logger.log('  Parsed storage:', parsed);
-        this.logger.log('  Number of products with addons:', Object.keys(parsed).length);
+        this.logger.log('Stored addon data:', parsed);
+        
+        Object.entries(parsed).forEach(([key, data]) => {
+          this.logger.log(`Key: ${key}, Product: ${data.productId}, Variant: ${data.variantId}, Total: £${data.totalPrice}`);
+        });
       } else {
-        this.logger.log('  ❌ No addon data in session storage');
-        this.logger.log('  💡 This means items were added to cart before the storage system was active');
-        this.logger.log('  💡 Will fallback to text parsing method');
+        this.logger.log('No addon data in session storage');
       }
     } catch (error) {
       this.logger.error('Error checking storage:', error);
     }
   }
 
-  addIsolatedStyles() {
-    if (this.isolatedStylesAdded || document.getElementById('cart-addon-styles')) {
-      return;
-    }
+  updateCartPrices() {
+    this.logger.log('Starting cart price updates...');
     
-    this.isolatedStylesAdded = true;
-    const style = document.createElement('style');
-    style.id = 'cart-addon-styles';
-    style.textContent = `
-      /* Isolated cart addon styles - won't leak */
-      .cart-addon-info {
-        font-size: 11px !important;
-        color: #666 !important;
-        margin: 2px 0 !important;
-        padding: 0 !important;
-        font-weight: normal !important;
-        line-height: 1.2 !important;
-        background: none !important;
-        border: none !important;
-        display: block !important;
-      }
-      
-      .cart-addon-price-update {
-        font-weight: bold !important;
-        color: #007ace !important;
-      }
-      
-      /* Ensure no layout disruption */
-      .cart-addon-info * {
-        font-size: inherit !important;
-        color: inherit !important;
-        margin: 0 !important;
-        padding: 0 !important;
-      }
-    `;
-    document.head.appendChild(style);
-    this.logger.log('Added isolated cart styles');
-  }
-
-  debouncedUpdate() {
-    clearTimeout(this.updateTimeout);
-    this.updateTimeout = setTimeout(() => {
-      this.updateCartPagePrices();
-    }, 300); // 300ms debounce
-  }
-
-  setupMutationObserver() {
-    const observer = new MutationObserver(() => {
-      if (!this.updateInProgress) {
-        this.debouncedUpdate(); // Use debounced version
-      }
-    });
+    // Find all cart line items
+    const lineItems = document.querySelectorAll('[data-id], .cart-item, .line-item');
+    this.logger.log('Found line items:', lineItems.length);
     
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-  }
-
-  updateCartPagePrices() {
-    if (this.updateInProgress) {
-      this.logger.log('Cart update already in progress, skipping');
-      return;
-    }
-    
-    this.updateInProgress = true;
-    this.logger.log('🛒 === CART UPDATE START ===');
-    this.logger.log('Updating cart page prices using stored addon data...');
-    
-    try {
-      const cartItems = document.querySelectorAll('[data-cart-item], .cart-item, .cart__item, .line-item');
-      this.logger.log('Found', cartItems.length, 'cart items');
-      
-      // Get addon data from storage for all cart items
-      const cartAddons = this.addonStorage.getCartAddons(Array.from(cartItems));
-      this.logger.log('Retrieved cart addons from storage:', cartAddons);
-      
-      let totalAddonPrice = 0;
-      
-      cartAddons.forEach((cartAddon, index) => {
-        try {
-          this.logger.log(`Processing cart item ${index + 1}:`, {
-            addons: cartAddon.addons,
-            totalPrice: cartAddon.totalPrice
-          });
-          
-          const itemId = this.getElementId(cartAddon.item);
-          
-          // Skip if already processed
-          if (this.processedElements.has(itemId)) {
-            this.logger.log('Item already processed, adding to total:', cartAddon.totalPrice);
-            totalAddonPrice += cartAddon.totalPrice;
-            return;
-          }
-          
-          if (cartAddon.totalPrice > 0) {
-            this.updateCartItemPriceWithStoredData(cartAddon.item, cartAddon.addons, cartAddon.totalPrice);
-            this.processedElements.add(itemId);
-            totalAddonPrice += cartAddon.totalPrice;
-            this.logger.log('Updated item, running total now:', totalAddonPrice);
-          }
-        } catch (error) {
-          this.logger.error('Error updating cart item with stored data:', error);
-        }
-      });
-      
-      this.logger.log('🔢 Final total addon price:', totalAddonPrice);
-      
-      // Update cart total with all addon prices
-      if (totalAddonPrice > 0) {
-        this.updateCartTotal(totalAddonPrice);
-      } else {
-        this.logger.log('⚠️  No addon prices found in stored data');
-        // Fallback to text parsing if no stored data
-        this.logger.log('Falling back to text parsing...');
-        this.fallbackToTextParsing(cartItems);
-      }
-      
-    } finally {
-      this.updateInProgress = false;
-      this.logger.log('🛒 === CART UPDATE END ===');
-    }
-  }
-
-  fallbackToTextParsing(cartItems) {
-    this.logger.log('📝 Using fallback text parsing method');
     let totalAddonPrice = 0;
     
-    cartItems.forEach((item, index) => {
-      const itemId = this.getElementId(item);
+    lineItems.forEach((item, index) => {
+      const lineId = this.extractLineItemId(item);
+      this.logger.log(`Line item ${index + 1} ID:`, lineId);
       
-      // Skip if already processed (avoid duplicate processing)
-      if (this.processedElements.has(itemId)) {
-        this.logger.log(`Fallback item ${index + 1} - already processed, skipping`);
-        return;
-      }
-      
-      const properties = this.extractCartAddonProperties(item);
-      this.logger.log(`Fallback item ${index + 1} parsed price:`, properties.totalAddonPrice);
-      
-      if (properties.totalAddonPrice > 0) {
-        this.updateCartItemPriceWithStoredData(item, properties.addons, properties.totalAddonPrice);
-        this.processedElements.add(itemId);
-        totalAddonPrice += properties.totalAddonPrice;
+      if (lineId && !this.processedLineItems.has(lineId)) {
+        const addonData = this.addonStorage.getCartAddonsByLineId(lineId);
+        
+        if (addonData && addonData.totalPrice > 0) {
+          this.logger.log(`Found addon data for line ${lineId}:`, addonData);
+          
+          // Update line item price
+          this.updateLineItemPrice(item, addonData.totalPrice);
+          
+          // Track processed items
+          this.processedLineItems.add(lineId);
+          totalAddonPrice += addonData.totalPrice;
+        }
       }
     });
     
-    this.logger.log('📝 Fallback total addon price:', totalAddonPrice);
+    // Update cart total
     if (totalAddonPrice > 0) {
       this.updateCartTotal(totalAddonPrice);
     }
+    
+    this.logger.log('Cart price updates complete. Total addon price:', totalAddonPrice);
   }
 
-  getElementId(element) {
-    // Create a unique identifier for the element
-    return element.outerHTML.substring(0, 200) + element.textContent.substring(0, 100);
-  }
-
-  extractCartAddonProperties(item) {
-    const properties = {
-      addons: [],
-      totalAddonPrice: 0
-    };
+  extractLineItemId(item) {
+    // Try multiple methods to extract line item/variant ID
     
-    this.logger.log('📝 Parsing cart item text for addons...');
-    const itemText = item.textContent || item.innerText || '';
-    this.logger.log('  Item text:', itemText.substring(0, 500));
-    
-    // Look for addon properties specifically in cart items
-    const propertySelectors = [
-      '.product-option',
-      '.line-item-property', 
-      '.cart-attribute',
-      '.product-property',
-      'dd', // Definition lists are common in cart
-      'li'  // List items
-    ];
-    
-    let foundAnyAddons = false;
-    
-    propertySelectors.forEach(selector => {
-      const elements = item.querySelectorAll(selector);
-      this.logger.log(`  Found ${elements.length} elements with selector: ${selector}`);
-      
-      elements.forEach((element, index) => {
-        const text = element.textContent || element.innerText || '';
-        this.logger.log(`    Element ${index + 1} text:`, text);
-        
-        // Look for addon price patterns - more specific to avoid false matches
-        const pricePatterns = [
-          /(\w[^(]*)\(\+£([\d.]+)\)/,    // Text (+£65.00)
-          /([^:]+):\s*Yes\s*\(\+£([\d.]+)\)/,  // Name: Yes (+£65.00)
-          /([^:]+):\s*([^(]+)\s*\(\+£([\d.]+)\)/, // Name: value (+£65.00)
-        ];
-        
-        pricePatterns.forEach((pattern, patternIndex) => {
-          const priceMatch = text.match(pattern);
-          if (priceMatch) {
-            const price = parseFloat(priceMatch[priceMatch.length - 1]); // Last group is always price
-            const addonName = priceMatch[1].trim();
-            
-            this.logger.log(`    🎯 Pattern ${patternIndex + 1} match:`, {
-              name: addonName,
-              price: price,
-              fullMatch: priceMatch[0]
-            });
-            
-            if (price > 0 && addonName) {
-              // Only add if we haven't seen this addon already
-              if (!properties.addons.some(addon => addon.name === addonName)) {
-                properties.addons.push({
-                  name: addonName,
-                  price: price
-                });
-                properties.totalAddonPrice += price;
-                foundAnyAddons = true;
-              }
-            }
-          }
-        });
-      });
-    });
-    
-    this.logger.log('📝 Extraction results:', {
-      foundAddons: properties.addons,
-      totalPrice: properties.totalAddonPrice,
-      foundAny: foundAnyAddons
-    });
-    
-    return properties;
-  }
-
-  updateCartItemPriceWithStoredData(item, addons, totalAddonPrice) {
-    if (totalAddonPrice <= 0) return;
-    
-    this.logger.log('Updating cart item with stored addon price:', totalAddonPrice, 'addons:', addons);
-    
-    // More specific selectors for cart prices
-    const priceSelectors = [
-      '.price:not(.cart-addon-updated)',
-      '.cart-item__price:not(.cart-addon-updated)',
-      '.line-item__price:not(.cart-addon-updated)',
-      '.money:not(.cart-addon-updated)'
-    ];
-    
-    let updated = false;
-    priceSelectors.forEach(selector => {
-      const priceElements = item.querySelectorAll(selector);
-      priceElements.forEach(element => {
-        if (!element.classList.contains('cart-addon-updated')) {
-          if (this.updateCartPriceElement(element, totalAddonPrice)) {
-            element.classList.add('cart-addon-updated');
-            updated = true;
-          }
-        }
-      });
-    });
-    
-    return updated;
-  }
-
-  updateCartPriceElement(element, addonPrice) {
-    const originalText = element.textContent || element.innerText || '';
-    
-    this.logger.log('🔍 Trying to update price element:', {
-      originalText: originalText.trim(),
-      addonPrice: addonPrice,
-      hasOriginalAttr: element.hasAttribute('data-cart-addon-original'),
-      includesIncl: originalText.includes('(incl.'),
-      includesAddons: originalText.includes('add-ons')
-    });
-    
-    // Skip if already updated
-    if (originalText.includes('(incl.') || originalText.includes('add-ons') || element.hasAttribute('data-cart-addon-original')) {
-      this.logger.log('❌ Skipping element - already processed');
-      return false;
+    // Method 1: data-id attribute
+    const dataId = item.getAttribute('data-id');
+    if (dataId) {
+      this.logger.log('Found line ID from data-id:', dataId);
+      return dataId;
     }
     
-    // Extract current price
-    const priceMatch = originalText.match(/(£|$|€)([\d,]+\.?\d*)/);
-    this.logger.log('🔍 Price regex match:', priceMatch);
-    
-    if (priceMatch) {
-      const currencySymbol = priceMatch[1];
-      const currentPrice = parseFloat(priceMatch[2].replace(/,/g, ''));
-      
-      this.logger.log('🔍 Parsed price details:', {
-        currencySymbol,
-        currentPrice,
-        isValidPrice: !isNaN(currentPrice)
-      });
-      
-      if (!isNaN(currentPrice)) {
-        const newPrice = currentPrice + addonPrice;
-        const updatedText = originalText.replace(
-          priceMatch[0], 
-          `${currencySymbol}${newPrice.toFixed(2)}`
-        );
-        
-        // Add a small addon info span
-        element.innerHTML = `
-          <span class="cart-addon-price-update">${updatedText}</span>
-          <span class="cart-addon-info">(incl. +£${addonPrice.toFixed(2)} add-ons)</span>
-        `;
-        
-        // ONLY mark as processed if update succeeded
-        element.setAttribute('data-cart-addon-original', 'true');
-        
-        this.logger.log('✅ Successfully updated cart price element:', currentPrice, '+', addonPrice, '=', newPrice);
-        return true;
-      } else {
-        this.logger.log('❌ Invalid price found:', currentPrice);
+    // Method 2: ID attribute pattern
+    const itemId = item.getAttribute('id');
+    if (itemId) {
+      const idMatch = itemId.match(/CartItem-(\d+)/);
+      if (idMatch) {
+        this.logger.log('Found line ID from id pattern:', idMatch[1]);
+        return idMatch[1];
       }
-    } else {
-      this.logger.log('❌ No price pattern found in text:', originalText);
     }
     
-    return false;
+    // Method 3: Look for hidden inputs with variant/line ID
+    const hiddenInputs = item.querySelectorAll('input[name*="id"], input[data-variant-id]');
+    for (const input of hiddenInputs) {
+      if (input.value && input.value.match(/^\d+$/)) {
+        this.logger.log('Found line ID from hidden input:', input.value);
+        return input.value;
+      }
+    }
+    
+    // Method 4: Look for data attributes
+    const variantId = item.getAttribute('data-variant-id') || 
+                     item.getAttribute('data-product-variant-id') ||
+                     item.getAttribute('data-line-item-key');
+    if (variantId) {
+      this.logger.log('Found line ID from data attribute:', variantId);
+      return variantId;
+    }
+    
+    this.logger.log('Could not extract line item ID from:', item);
+    return null;
+  }
+
+  updateLineItemPrice(item, addonPrice) {
+    this.logger.log('Updating line item price by £', addonPrice);
+    
+    // Find price elements in this line item
+    const priceElements = item.querySelectorAll('.price, .money, [data-price]');
+    
+    priceElements.forEach((element, index) => {
+      if (element.classList.contains('addon-updated')) {
+        this.logger.log(`Price element ${index + 1} already updated, skipping`);
+        return;
+      }
+      
+      const originalText = element.textContent.trim();
+      const priceMatch = originalText.match(/(£|$|€)([\d,]+\.?\d*)/);
+      
+      if (priceMatch) {
+        const currencySymbol = priceMatch[1];
+        const currentPrice = parseFloat(priceMatch[2].replace(/,/g, ''));
+        
+        if (!isNaN(currentPrice)) {
+          const newPrice = currentPrice + addonPrice;
+          element.textContent = `${currencySymbol}${newPrice.toFixed(2)}`;
+          element.classList.add('addon-updated');
+          
+          this.logger.log(`Updated price element ${index + 1}:`, `${currentPrice} + ${addonPrice} = ${newPrice}`);
+        }
+      }
+    });
   }
 
   updateCartTotal(totalAddonPrice) {
-    if (totalAddonPrice <= 0) return;
+    this.logger.log('Updating cart total by £', totalAddonPrice);
     
-    this.logger.log('💰 Updating cart total with addon price:', totalAddonPrice);
-    
-    // Add the specific selector for this theme first
+    // Find cart total elements using the specific selector from earlier
     const totalSelectors = [
-      // Theme-specific selector
-      'div.totals p.totals__total-value:not(.cart-total-updated)',
-      '.totals__total-value:not(.cart-total-updated)',
-      
-      // Common cart total selectors
-      '.cart__total .money:not(.cart-total-updated)',
-      '.cart-total .money:not(.cart-total-updated)',
-      '.totals__total .money:not(.cart-total-updated)',
-      '.estimated-total .money:not(.cart-total-updated)',
-      '[data-cart-total]:not(.cart-total-updated)',
-      // More general approaches
-      '.cart-footer .money:not(.cart-total-updated)'
+      'div.totals p.totals__total-value',
+      '.totals__total-value',
+      '.cart-total',
+      '.total-price'
     ];
     
-    let updated = false;
-    
-    // Debug: log all potential elements
-    this.logger.log('🔍 Searching for total elements...');
-    totalSelectors.forEach((selector, index) => {
-      const elements = document.querySelectorAll(selector.replace(':not(.cart-total-updated)', ''));
-      this.logger.log(`Selector ${index + 1} (${selector}):`, elements.length, 'elements found');
-      if (elements.length > 0) {
-        elements.forEach((el, i) => {
-          this.logger.log(`  Element ${i + 1}:`, el.textContent.trim(), 'Already updated:', el.classList.contains('cart-total-updated'));
-        });
-      }
-    });
-    
-    // First try specific selectors
-    totalSelectors.forEach((selector, index) => {
-      try {
-        const elements = document.querySelectorAll(selector);
-        this.logger.log(`Trying selector ${index + 1}: ${selector} - Found ${elements.length} elements`);
+    totalSelectors.forEach(selector => {
+      const elements = document.querySelectorAll(selector);
+      elements.forEach(element => {
+        if (element.classList.contains('total-updated')) return;
         
-        elements.forEach((element, i) => {
-          if (!element.classList.contains('cart-total-updated') && !element.hasAttribute('data-cart-total-original')) {
-            this.logger.log(`Attempting to update element ${i + 1}:`, element.textContent.trim());
+        const originalText = element.textContent.trim();
+        const priceMatch = originalText.match(/(£|$|€)([\d,]+\.?\d*)/);
+        
+        if (priceMatch) {
+          const currencySymbol = priceMatch[1];
+          const currentPrice = parseFloat(priceMatch[2].replace(/,/g, ''));
+          
+          if (!isNaN(currentPrice)) {
+            const newPrice = currentPrice + totalAddonPrice;
+            element.textContent = `${currencySymbol}${newPrice.toFixed(2)} GBP`;
+            element.classList.add('total-updated');
             
-            if (this.updateCartTotalElement(element, totalAddonPrice)) {
-              element.classList.add('cart-total-updated');
-              element.setAttribute('data-cart-total-original', 'true');
-              updated = true;
-              this.logger.log('✅ Successfully updated cart total element via selector:', selector);
-            } else {
-              this.logger.log('❌ Failed to update element');
-            }
-          } else {
-            this.logger.log(`Skipping element ${i + 1} - already updated or has original attribute`);
-          }
-        });
-      } catch (e) {
-        this.logger.error('Error with selector:', selector, e);
-      }
-    });
-    
-    // If no specific selectors worked, try a broader approach
-    if (!updated) {
-      this.logger.log('🔍 No specific selectors worked, trying broader approach...');
-      
-      // Look for text containing "Estimated total" or "Total"
-      const allElements = Array.from(document.querySelectorAll('*')).filter(el => {
-        const text = el.textContent.toLowerCase();
-        return (text.includes('estimated total') || (text.includes('total') && text.includes('£'))) &&
-               !el.classList.contains('cart-total-updated') &&
-               el.children.length <= 3; // Avoid containers
-      });
-      
-      this.logger.log('Broader search found', allElements.length, 'potential elements');
-      
-      allElements.forEach((element, index) => {
-        this.logger.log(`Broad element ${index + 1}:`, element.textContent.trim(), 'Tag:', element.tagName);
-        
-        // Try the element itself first
-        if (!element.classList.contains('cart-total-updated')) {
-          if (this.updateCartTotalElement(element, totalAddonPrice)) {
-            element.classList.add('cart-total-updated');
-            element.setAttribute('data-cart-total-original', 'true');
-            updated = true;
-            this.logger.log('✅ Updated via broad search - element itself');
+            this.logger.log(`Updated total via ${selector}:`, `${currentPrice} + ${totalAddonPrice} = ${newPrice}`);
           }
         }
-        
-        // Then try money elements within
-        const moneyElements = element.querySelectorAll('.money, [class*="price"], [class*="total"]');
-        moneyElements.forEach((moneyEl, i) => {
-          if (!moneyEl.classList.contains('cart-total-updated')) {
-            this.logger.log(`  Trying money element ${i + 1}:`, moneyEl.textContent.trim());
-            if (this.updateCartTotalElement(moneyEl, totalAddonPrice)) {
-              moneyEl.classList.add('cart-total-updated');
-              moneyEl.setAttribute('data-cart-total-original', 'true');
-              updated = true;
-              this.logger.log('✅ Updated via broad search - money element');
-            }
-          }
-        });
       });
-    }
-    
-    if (!updated) {
-      this.logger.log('❌ Could not find any cart total element to update');
-      this.logger.log('💡 Available elements that might be totals:');
-      
-      // Debug: show all elements that contain currency
-      const currencyElements = Array.from(document.querySelectorAll('*')).filter(el => 
-        el.textContent.includes('£') && 
-        el.children.length <= 2 &&
-        !el.classList.contains('cart-total-updated')
-      );
-      
-      currencyElements.forEach((el, i) => {
-        this.logger.log(`  Currency element ${i + 1}:`, el.textContent.trim(), 'Classes:', el.className, 'Tag:', el.tagName);
-      });
-    }
-  }
-
-  updateCartTotalElement(element, addonPrice) {
-    const originalText = element.textContent || element.innerText || '';
-    
-    // Skip if already updated
-    if (originalText.includes('(incl.') || originalText.includes('add-ons') || element.hasAttribute('data-cart-total-original')) {
-      return false;
-    }
-    
-    // Extract current price - handle £0.00 case
-    const priceMatch = originalText.match(/(£|$|€)([\d,]+\.?\d*)/);
-    if (priceMatch) {
-      const currencySymbol = priceMatch[1];
-      const currentPrice = parseFloat(priceMatch[2].replace(/,/g, ''));
-      
-      if (!isNaN(currentPrice)) {
-        const newPrice = currentPrice + addonPrice;
-        const updatedText = originalText.replace(
-          priceMatch[0], 
-          `${currencySymbol}${newPrice.toFixed(2)}`
-        );
-        element.textContent = updatedText;
-        this.logger.log('Updated cart total:', currentPrice, '+', addonPrice, '=', newPrice);
-        return true;
-      }
-    }
-    
-    return false;
-  }
-
-  watchForCartUpdates() {
-    // Intercept fetch requests for cart updates with throttling
-    const originalFetch = window.fetch;
-    
-    window.fetch = async (...args) => {
-      const response = await originalFetch.apply(this, args);
-      
-      const url = args[0];
-      if (typeof url === 'string' && (url.includes('/cart') || url.includes('cart.js'))) {
-        // Clear processed elements on cart changes and use debounced update
-        this.processedElements.clear();
-        this.debouncedUpdate();
-      }
-      
-      return response;
-    };
+    });
   }
 }

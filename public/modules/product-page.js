@@ -245,7 +245,7 @@ export class ProductPageHandler {
       selectedValue = element.value;
     }
 
-    this.logger.log(`🔧 DEBUG: Addon ${addonId} changed. Value: ${selectedValue}, Price: £${price}`);
+    this.logger.log(`Addon ${addonId} changed. Value: ${selectedValue}, Price: ${price}`);
     
     // Store addon selection in memory
     window.productAddons = window.productAddons || {};
@@ -256,30 +256,62 @@ export class ProductPageHandler {
       name: element.closest('.addon-item').querySelector('label').textContent.replace(':', '').trim()
     };
 
-    this.logger.log('📦 DEBUG: Current window.productAddons:', window.productAddons);
-
-    // Store in session storage for cart page retrieval
+    // Store in session storage with variant ID
     const productId = this.productDetector.getProductId();
-    this.logger.log('🔍 DEBUG: Product ID for storage:', productId);
+    const variantId = this.getSelectedVariantId();
+    
+    this.logger.log('Storing addon data:', { productId, variantId });
     
     if (productId) {
-      this.logger.log('💾 DEBUG: About to call storeProductAddons...');
-      const storedData = this.addonStorage.storeProductAddons(productId, window.productAddons);
-      this.logger.log('💾 DEBUG: Storage result:', storedData);
-      
-      // Verify it was stored
-      const verification = this.addonStorage.getProductAddons(productId);
-      this.logger.log('✅ DEBUG: Verification - data retrieved:', verification);
-      
-      // Double-check raw session storage
-      const rawStorage = sessionStorage.getItem('productAddons');
-      this.logger.log('🗄️ DEBUG: Raw session storage:', rawStorage);
-    } else {
-      this.logger.error('❌ DEBUG: No product ID found - cannot store addons');
+      this.addonStorage.storeProductAddons(productId, window.productAddons, variantId);
     }
 
     this.updateTotalPrice();
     this.updateCartProperties();
+  }
+
+  getSelectedVariantId() {
+    // Try multiple methods to get the selected variant ID
+    
+    // Method 1: Look for variant selector
+    const variantSelect = document.querySelector('select[name="id"], input[name="id"]:checked');
+    if (variantSelect && variantSelect.value) {
+      this.logger.log('Found variant ID from selector:', variantSelect.value);
+      return variantSelect.value;
+    }
+    
+    // Method 2: Look for hidden variant input
+    const variantInput = document.querySelector('input[name="id"]');
+    if (variantInput && variantInput.value) {
+      this.logger.log('Found variant ID from hidden input:', variantInput.value);
+      return variantInput.value;
+    }
+    
+    // Method 3: Check URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const variantParam = urlParams.get('variant');
+    if (variantParam) {
+      this.logger.log('Found variant ID from URL:', variantParam);
+      return variantParam;
+    }
+    
+    // Method 4: Look in product data scripts
+    const productScripts = document.querySelectorAll('script[type="application/json"]');
+    for (const script of productScripts) {
+      try {
+        const data = JSON.parse(script.textContent);
+        if (data.product && data.product.variants && data.product.variants[0]) {
+          const variantId = data.product.variants[0].id;
+          this.logger.log('Found variant ID from product script:', variantId);
+          return variantId;
+        }
+      } catch (e) {
+        // Continue searching
+      }
+    }
+    
+    this.logger.log('Could not determine variant ID');
+    return null;
   }
 
   updateTotalPrice() {
