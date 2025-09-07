@@ -80,42 +80,58 @@ export class CartPageHandler {
   extractLineItemId(item) {
     // Try multiple methods to extract line item/variant ID
     
-    // Method 1: data-id attribute
-    const dataId = item.getAttribute('data-id');
-    if (dataId) {
-      this.logger.log('Found line ID from data-id:', dataId);
-      return dataId;
-    }
-    
-    // Method 2: ID attribute pattern
+    // Method 1: ID attribute with CartItem pattern (most reliable for actual cart items)
     const itemId = item.getAttribute('id');
-    if (itemId) {
+    if (itemId && itemId.startsWith('CartItem-')) {
       const idMatch = itemId.match(/CartItem-(\d+)/);
       if (idMatch) {
-        this.logger.log('Found line ID from id pattern:', idMatch[1]);
+        this.logger.log('Found line ID from CartItem pattern:', idMatch[1]);
         return idMatch[1];
       }
     }
     
-    // Method 3: Look for hidden inputs with variant/line ID
-    const hiddenInputs = item.querySelectorAll('input[name*="id"], input[data-variant-id]');
-    for (const input of hiddenInputs) {
-      if (input.value && input.value.match(/^\d+$/)) {
-        this.logger.log('Found line ID from hidden input:', input.value);
-        return input.value;
-      }
-    }
-    
-    // Method 4: Look for data attributes
+    // Method 2: data-variant-id or similar cart-specific attributes
     const variantId = item.getAttribute('data-variant-id') || 
                      item.getAttribute('data-product-variant-id') ||
                      item.getAttribute('data-line-item-key');
-    if (variantId) {
-      this.logger.log('Found line ID from data attribute:', variantId);
+    if (variantId && variantId.match(/^\d+$/)) {
+      this.logger.log('Found line ID from variant data attribute:', variantId);
       return variantId;
     }
     
-    this.logger.log('Could not extract line item ID from:', item);
+    // Method 3: Look for hidden inputs with cart line keys
+    const cartInputs = item.querySelectorAll('input[name*="updates"], input[name*="quantity"]');
+    for (const input of cartInputs) {
+      const nameAttr = input.getAttribute('name');
+      if (nameAttr) {
+        const keyMatch = nameAttr.match(/\[(\d+)\]/);
+        if (keyMatch) {
+          this.logger.log('Found line ID from cart input name:', keyMatch[1]);
+          return keyMatch[1];
+        }
+      }
+    }
+    
+    // Method 4: Look for delete/remove buttons with line item references
+    const removeButton = item.querySelector('a[href*="change"], button[data-index]');
+    if (removeButton) {
+      const href = removeButton.getAttribute('href');
+      if (href) {
+        const lineMatch = href.match(/line=(\d+)/);
+        if (lineMatch) {
+          this.logger.log('Found line ID from remove button:', lineMatch[1]);
+          return lineMatch[1];
+        }
+      }
+      
+      const dataIndex = removeButton.getAttribute('data-index');
+      if (dataIndex && dataIndex.match(/^\d+$/)) {
+        this.logger.log('Found line ID from button data-index:', dataIndex);
+        return dataIndex;
+      }
+    }
+    
+    this.logger.log('Could not extract line item ID from:', item.tagName, item.className);
     return null;
   }
 
