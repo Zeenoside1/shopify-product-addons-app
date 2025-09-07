@@ -1,4 +1,4 @@
-// Cart page addon price handling - With line item price updates and hidden product hiding
+// Cart page addon price handling - Fixed version with targeted price updates
 import { AddonStorage } from './addon-storage.js';
 import { AddonConfig } from './addon-config.js';
 
@@ -195,9 +195,11 @@ export class CartPageHandler {
 
   updateLineItemPrices() {
     this.logger.log('Updating line item prices on display...');
+    this.logger.log('Product addon map contains:', this.productAddonMap.size, 'entries');
     
     // Update each product line item with its addon pricing
     this.productAddonMap.forEach((addonInfo, variantId) => {
+      this.logger.log('Processing variant:', variantId, 'with addon info:', addonInfo);
       this.updateProductLineItem(variantId, addonInfo);
     });
     
@@ -295,87 +297,202 @@ export class CartPageHandler {
   }
 
   isRowForVariant(row, variantId) {
+    this.logger.log('Checking if row matches variant:', variantId);
+    
     // Check various ways to identify the row
     const checks = [
-      () => row.getAttribute('data-variant-id') === variantId,
-      () => row.querySelector(`[data-variant-id="${variantId}"]`),
-      () => row.querySelector(`input[name*="updates[${variantId}]"]`),
-      () => row.querySelector(`input[value="${variantId}"]`),
+      {
+        name: 'data-variant-id attribute',
+        check: () => row.getAttribute('data-variant-id') === variantId
+      },
+      {
+        name: 'child with data-variant-id',
+        check: () => row.querySelector(`[data-variant-id="${variantId}"]`)
+      },
+      {
+        name: 'updates input name',
+        check: () => row.querySelector(`input[name*="updates[${variantId}]"]`)
+      },
+      {
+        name: 'input with variant value',
+        check: () => row.querySelector(`input[value="${variantId}"]`)
+      },
+      {
+        name: 'data-key attribute',
+        check: () => row.getAttribute('data-key') === variantId
+      },
+      {
+        name: 'data-line-item-key',
+        check: () => row.getAttribute('data-line-item-key') === variantId
+      }
     ];
     
-    return checks.some(check => {
+    for (const checkObj of checks) {
       try {
-        return check();
+        const result = checkObj.check();
+        if (result) {
+          this.logger.log(`✅ Row matches variant ${variantId} via: ${checkObj.name}`);
+          return true;
+        } else {
+          this.logger.log(`❌ ${checkObj.name}: no match`);
+        }
       } catch (error) {
-        return false;
+        this.logger.log(`❌ ${checkObj.name}: error -`, error.message);
       }
+    }
+    
+    // If no matches found, log the row attributes for debugging
+    this.logger.log('Row attributes for debugging:', {
+      'data-variant-id': row.getAttribute('data-variant-id'),
+      'data-key': row.getAttribute('data-key'),
+      'data-line-item-key': row.getAttribute('data-line-item-key'),
+      'id': row.id,
+      'class': row.className
     });
+    
+    // Also check if any inputs in the row contain the variant ID
+    const allInputs = row.querySelectorAll('input');
+    allInputs.forEach((input, index) => {
+      this.logger.log(`Input ${index}:`, {
+        name: input.name,
+        value: input.value,
+        'data-variant-id': input.getAttribute('data-variant-id')
+      });
+    });
+    
+    return false;
   }
 
   updateRowUnitPrice(row, addonPrice) {
-    // Find price elements in the row
+    this.logger.log('🎯 TARGETING SPECIFIC PRICE ELEMENTS with addon price:', addonPrice);
+    
+    // Target the EXACT elements we found in debug output
     const priceSelectors = [
-      '.price:not(.total-price)',
-      '.money:not(.total)',
-      '.unit-price',
-      '.product-price',
-      '[data-unit-price]',
-      'td:nth-child(3)', // Often the price column
+      'span.price.price--end',  // MAIN TARGET from debug output
+      '.cart-item__price-wrapper .price.price--end',
+      '.product-option', // This also contains £0.00 according to debug
     ];
+    
+    let updated = false;
     
     priceSelectors.forEach(selector => {
       const priceElements = row.querySelectorAll(selector);
+      this.logger.log(`Checking selector "${selector}" - found ${priceElements.length} elements`);
       
-      priceElements.forEach(element => {
+      priceElements.forEach((element, elemIndex) => {
         if (!element.classList.contains('addon-updated') && !this.isHiddenProductElement(element)) {
-          const originalPrice = this.extractPrice(element.textContent);
+          const elementText = element.textContent.trim();
+          this.logger.log(`  Element ${elemIndex}: "${elementText}" (${element.tagName}.${element.className})`);
           
-          if (originalPrice > 0) {
-            const newPrice = originalPrice + addonPrice;
+          // Check if this element contains exactly £0.00
+          if (elementText === '£0.00') {
+            const newPrice = addonPrice;
             element.textContent = `£${newPrice.toFixed(2)}`;
             element.classList.add('addon-updated');
-            element.setAttribute('data-original-price', originalPrice.toString());
+            element.setAttribute('data-original-price', '0');
             
-            this.logger.log(`Updated unit price: £${originalPrice} + £${addonPrice} = £${newPrice}`);
+            this.logger.log(`✅ SUCCESS! Updated £0.00 to £${newPrice} using: ${selector}`);
+            updated = true;
+          }
+          // Handle multi-line text that contains £0.00
+          else if (elementText.includes('£0.00')) {
+            const newPrice = addonPrice;
+            const newText = elementText.replace('£0.00', `£${newPrice.toFixed(2)}`);
+            element.textContent = newText;
+            element.classList.add('addon-updated');
+            element.setAttribute('data-original-price', '0');
+            
+            this.logger.log(`✅ SUCCESS! Updated text containing £0.00 using: ${selector}`);
+            updated = true;
           }
         }
       });
     });
+    
+    // LAST RESORT: Find any element with exactly £0.00
+    if (!updated) {
+      this.logger.log('🔧 Last resort: finding ANY element with £0.00...');
+      const allElements = Array.from(row.querySelectorAll('*')).filter(el => 
+        el.textContent.trim() === '£0.00' && 
+        el.children.length === 0 && // Text-only elements
+        !this.isHiddenProductElement(el) &&
+        !el.classList.contains('addon-updated')
+      );
+      
+      this.logger.log(`Found ${allElements.length} elements with exactly £0.00`);
+      
+      if (allElements.length > 0) {
+        const element = allElements[0];
+        element.textContent = `£${addonPrice.toFixed(2)}`;
+        element.classList.add('addon-updated');
+        element.setAttribute('data-original-price', '0');
+        this.logger.log(`✅ LAST RESORT SUCCESS! Updated first £0.00 element to £${addonPrice}`);
+        updated = true;
+      }
+    }
+    
+    if (!updated) {
+      this.logger.log('❌ FAILED to update any price elements');
+    }
+    
+    return updated;
   }
 
   updateRowLineTotal(row, addonPrice) {
-    // Find line total elements
+    this.logger.log('🎯 TARGETING SPECIFIC TOTAL ELEMENTS...');
+    
+    // Target the EXACT total elements from debug output
     const totalSelectors = [
-      '.line-total',
-      '.total-price',
-      '.subtotal',
-      '[data-line-total]',
-      'td:last-child .money', // Often the last column
-      'td:last-child .price',
+      'td.cart-item__totals .price.price--end', // MAIN TARGET from debug
+      '.cart-item__totals .cart-item__price-wrapper .price.price--end',
+      'td.cart-item__totals',
     ];
     
     // Get quantity for this line
     const qtyElement = row.querySelector('input[name*="quantity"], .quantity, [data-quantity]');
     const quantity = qtyElement ? parseInt(qtyElement.value || qtyElement.textContent) || 1 : 1;
     
+    let updated = false;
+    
     totalSelectors.forEach(selector => {
       const totalElements = row.querySelectorAll(selector);
+      this.logger.log(`Checking total selector "${selector}" - found ${totalElements.length} elements`);
       
-      totalElements.forEach(element => {
+      totalElements.forEach((element, elemIndex) => {
         if (!element.classList.contains('addon-total-updated') && !this.isHiddenProductElement(element)) {
-          const originalTotal = this.extractPrice(element.textContent);
+          const elementText = element.textContent.trim();
+          this.logger.log(`  Total element ${elemIndex}: "${elementText.substring(0, 50)}..." (${element.tagName}.${element.className})`);
           
-          if (originalTotal > 0) {
-            const newTotal = originalTotal + (addonPrice * quantity);
+          // Check if this element contains exactly £0.00
+          if (elementText === '£0.00') {
+            const newTotal = addonPrice * quantity;
             element.textContent = `£${newTotal.toFixed(2)}`;
             element.classList.add('addon-total-updated');
-            element.setAttribute('data-original-total', originalTotal.toString());
+            element.setAttribute('data-original-total', '0');
             
-            this.logger.log(`Updated line total: £${originalTotal} + £${addonPrice * quantity} = £${newTotal}`);
+            this.logger.log(`✅ SUCCESS! Updated total £0.00 to £${newTotal} using: ${selector}`);
+            updated = true;
+          }
+          // Handle text that contains £0.00
+          else if (elementText.includes('£0.00')) {
+            const newTotal = addonPrice * quantity;
+            // Use innerHTML to preserve structure
+            element.innerHTML = element.innerHTML.replace('£0.00', `£${newTotal.toFixed(2)}`);
+            element.classList.add('addon-total-updated');
+            element.setAttribute('data-original-total', '0');
+            
+            this.logger.log(`✅ SUCCESS! Updated total text containing £0.00 using: ${selector}`);
+            updated = true;
           }
         }
       });
     });
+    
+    if (!updated) {
+      this.logger.log('❌ FAILED to update any total elements');
+    }
+    
+    return updated;
   }
 
   addAddonDetailsToRow(row, addons) {
@@ -403,7 +520,7 @@ export class CartPageHandler {
   }
 
   updateCartTotals() {
-    // Find and update cart subtotal/total elements
+    // Cart totals are already correct via hidden product - just mark as processed
     const totalSelectors = [
       '.cart-subtotal .money',
       '.cart-total .money',
@@ -412,27 +529,11 @@ export class CartPageHandler {
       '[data-cart-total]',
     ];
     
-    // Calculate total addon price across all products
-    let totalAddonPrice = 0;
-    this.productAddonMap.forEach(addonInfo => {
-      totalAddonPrice += addonInfo.addonPrice;
-    });
-    
-    if (totalAddonPrice === 0) return;
-    
     totalSelectors.forEach(selector => {
       const elements = document.querySelectorAll(selector);
-      
       elements.forEach(element => {
         if (!element.classList.contains('cart-total-updated')) {
-          const originalTotal = this.extractPrice(element.textContent);
-          
-          if (originalTotal > 0) {
-            // For cart totals, we don't add addon price since it's already included via hidden product
-            // We just mark it as updated to prevent further processing
-            element.classList.add('cart-total-updated');
-            this.logger.log('Cart total already includes addon pricing via hidden product');
-          }
+          element.classList.add('cart-total-updated');
         }
       });
     });
