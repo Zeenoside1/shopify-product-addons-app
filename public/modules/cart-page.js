@@ -250,20 +250,44 @@ export class CartPageHandler {
     
     if (!foundMatch) {
       this.logger.log('⚠️ No matching row found for variant', variantId);
-      this.logger.log('Trying fallback approach - updating first non-hidden product row...');
+      this.logger.log('🔍 Trying smart fallback - find row with £0.00 prices...');
       
-      // Fallback: if we can't match by variant, update the first non-hidden row
+      // SMART FALLBACK: Find the row that contains £0.00 (likely the one with addons)
       cartRows.forEach((row, index) => {
         if (!this.isHiddenProductRow(row) && !foundMatch) {
-          this.logger.log(`🔄 Using fallback - updating row ${index + 1}`);
-          foundMatch = true;
+          const rowText = row.textContent;
+          const hasZeroPrice = rowText.includes('£0.00');
           
-          this.debugRowContents(row);
-          this.updateRowUnitPrice(row, addonInfo.addonPrice);
-          this.updateRowLineTotal(row, addonInfo.addonPrice);
-          this.addAddonDetailsToRow(row, addonInfo.addons);
+          this.logger.log(`Row ${index + 1} contains £0.00:`, hasZeroPrice);
+          
+          if (hasZeroPrice) {
+            this.logger.log(`🎯 SMART MATCH! Row ${index + 1} has £0.00 prices - this is likely our addon product`);
+            foundMatch = true;
+            
+            this.debugRowContents(row);
+            this.updateRowUnitPrice(row, addonInfo.addonPrice);
+            this.updateRowLineTotal(row, addonInfo.addonPrice);
+            this.addAddonDetailsToRow(row, addonInfo.addons);
+          }
         }
       });
+      
+      // If still no match, use the original fallback
+      if (!foundMatch) {
+        this.logger.log('🔄 Using original fallback - updating first non-hidden product row...');
+        
+        cartRows.forEach((row, index) => {
+          if (!this.isHiddenProductRow(row) && !foundMatch) {
+            this.logger.log(`🔄 Using fallback - updating row ${index + 1}`);
+            foundMatch = true;
+            
+            this.debugRowContents(row);
+            this.updateRowUnitPrice(row, addonInfo.addonPrice);
+            this.updateRowLineTotal(row, addonInfo.addonPrice);
+            this.addAddonDetailsToRow(row, addonInfo.addons);
+          }
+        });
+      }
     }
   }
 
