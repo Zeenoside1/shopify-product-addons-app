@@ -415,6 +415,48 @@ export class ProductPageHandler {
       totalInput.name = 'properties[_Add-ons Total]';
       totalInput.value = `£${totalPrice.toFixed(2)}`;
       form.appendChild(totalInput);
+
+      // CRITICAL: Also add addon price to the actual product price
+      this.updateFormPrice(totalPrice);
+    }
+  }
+
+  updateFormPrice(addonPrice) {
+    // Find the product price input and update it
+    const priceInput = document.querySelector('form[action*="/cart/add"] input[name="price"]');
+    const variantSelect = document.querySelector('form[action*="/cart/add"] select[name="id"], form[action*="/cart/add"] input[name="id"]');
+    
+    if (variantSelect) {
+      // Get the base price from the selected variant
+      let basePrice = 0;
+      
+      if (variantSelect.tagName === 'SELECT') {
+        const selectedOption = variantSelect.options[variantSelect.selectedIndex];
+        basePrice = parseFloat(selectedOption.getAttribute('data-price')) || 0;
+      } else {
+        basePrice = parseFloat(variantSelect.getAttribute('data-price')) || 0;
+      }
+      
+      // If no base price found, try to extract from display
+      if (basePrice === 0) {
+        const priceDisplay = document.querySelector('.price:not(.addon-price)');
+        if (priceDisplay) {
+          const priceMatch = priceDisplay.textContent.match(/£([\d.]+)/);
+          if (priceMatch) {
+            basePrice = parseFloat(priceMatch[1]);
+          }
+        }
+      }
+      
+      // Update the variant option with new price
+      const newPrice = basePrice + addonPrice;
+      if (variantSelect.tagName === 'SELECT') {
+        variantSelect.options[variantSelect.selectedIndex].setAttribute('data-price', newPrice);
+      } else {
+        variantSelect.setAttribute('data-price', newPrice);
+      }
+      
+      this.logger.log('Updated form price:', basePrice, '+', addonPrice, '=', newPrice);
     }
   }
 }
