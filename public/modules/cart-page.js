@@ -1,4 +1,4 @@
-// Cart page addon price handling - Debug Version for Variant Testing
+// Cart page addon price handling - Fixed version without auto-refresh
 import { AddonStorage } from './addon-storage.js';
 import { AddonConfig } from './addon-config.js';
 
@@ -13,6 +13,8 @@ export class CartPageHandler {
     this.HIDDEN_PRODUCT_PRICE = AddonConfig.HIDDEN_PRODUCT.PRICE;
     
     this.processedProducts = new Set();
+    this.isProcessing = false; // Prevent multiple simultaneous operations
+    this.hasProcessed = false; // Track if we've already processed this page load
   }
 
   init() {
@@ -23,150 +25,35 @@ export class CartPageHandler {
       unitPrice: this.HIDDEN_PRODUCT_PRICE
     });
     
-    // First test if we can access the variant
+    // Check if we already processed (to prevent refresh loops)
+    const urlParams = new URLSearchParams(window.location.search);
+    const processed = sessionStorage.getItem('cart_addon_processed');
+    
+    if (processed && (Date.now() - parseInt(processed)) < 5000) {
+      this.logger.log('Recently processed, skipping to prevent refresh loop');
+      this.hasProcessed = true;
+      return;
+    }
+    
+    // Clear old processed flag
+    sessionStorage.removeItem('cart_addon_processed');
+    
+    // Check and sync cart with stored addon data
     setTimeout(() => {
-      this.testVariantAccess();
+      this.syncCartWithAddons();
     }, 500);
   }
 
-  async testVariantAccess() {
-    this.logger.log('Testing variant accessibility...');
-    
-    try {
-      // Test 1: Try to fetch product info via AJAX
-      const productResponse = await fetch(`/products/${this.HIDDEN_PRODUCT_ID}.js`);
-      if (productResponse.ok) {
-        const productData = await productResponse.json();
-        this.logger.log('✅ Product accessible via AJAX:', productData);
-        
-        // Check if our variant exists in the product data
-        const variant = productData.variants.find(v => v.id.toString() === this.HIDDEN_VARIANT_ID);
-        if (variant) {
-          this.logger.log('✅ Variant found in product data:', variant);
-          
-          // Now try the cart sync
-          this.syncCartWithAddons();
-        } else {
-          this.logger.error('❌ Variant not found in product data. Available variants:', 
-            productData.variants.map(v => ({ id: v.id, title: v.title, available: v.available })));
-        }
-      } else {
-        this.logger.error('❌ Product not accessible via AJAX:', productResponse.status);
-        
-        // Try alternative method
-        this.testAlternativeVariantAccess();
-      }
-    } catch (error) {
-      this.logger.error('❌ Error testing variant access:', error);
-      this.testAlternativeVariantAccess();
-    }
-  }
-
-  async testAlternativeVariantAccess() {
-    this.logger.log('Testing alternative variant access methods...');
-    
-    // Test 2: Try adding with different format
-    const testMethods = [
-      {
-        name: 'Using variant ID as string',
-        data: { id: this.HIDDEN_VARIANT_ID, quantity: 1 }
-      },
-      {
-        name: 'Using variant ID as number',
-        data: { id: parseInt(this.HIDDEN_VARIANT_ID), quantity: 1 }
-      },
-      {
-        name: 'Using product ID instead',
-        data: { id: this.HIDDEN_PRODUCT_ID, quantity: 1 }
-      }
-    ];
-
-    for (const method of testMethods) {
-      try {
-        this.logger.log(`Testing: ${method.name}`, method.data);
-        
-        const formData = new FormData();
-        formData.append('id', method.data.id);
-        formData.append('quantity', method.data.quantity);
-        formData.append('properties[_test]', 'variant_accessibility_test');
-        
-        const response = await fetch('/cart/add.js', {
-          method: 'POST',
-          body: formData
-        });
-        
-        if (response.ok) {
-          this.logger.log(`✅ ${method.name} WORKS!`);
-          const result = await response.json();
-          this.logger.log('Response:', result);
-          
-          // Remove the test item
-          setTimeout(() => this.removeTestItem(), 1000);
-          
-          // Use this working method for the actual sync
-          this.syncCartWithAddons(method.data.id);
-          return;
-        } else {
-          const error = await response.text();
-          this.logger.log(`❌ ${method.name} failed:`, error);
-        }
-      } catch (error) {
-        this.logger.log(`❌ ${method.name} error:`, error);
-      }
+  async syncCartWithAddons() {
+    if (this.isProcessing || this.hasProcessed) {
+      this.logger.log('Already processing or processed, skipping');
+      return;
     }
     
-    // If all methods fail, check product setup
-    this.suggestProductSetupFix();
-  }
-
-  async removeTestItem() {
-    try {
-      const cart = await this.getCurrentCart();
-      const testItem = cart.items.find(item => 
-        item.properties && item.properties['_test'] === 'variant_accessibility_test'
-      );
-      
-      if (testItem) {
-        const updates = {};
-        updates[testItem.key] = 0;
-        
-        await fetch('/cart/update.js', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ updates })
-        });
-        
-        this.logger.log('Test item removed from cart');
-      }
-    } catch (error) {
-      this.logger.log('Could not remove test item:', error);
-    }
-  }
-
-  suggestProductSetupFix() {
-    this.logger.error('🚨 PRODUCT SETUP ISSUE DETECTED 🚨');
-    this.logger.error('The hidden product variant is not accessible from the storefront.');
-    this.logger.error('');
-    this.logger.error('SOLUTION: Check these product settings in Shopify Admin:');
-    this.logger.error('1. Product Status: Must be "Active"');
-    this.logger.error('2. Product Availability: Must be available on "Online Store"');
-    this.logger.error('3. Variant Availability: Must be available');
-    this.logger.error('4. Track Quantity: Must be DISABLED');
-    this.logger.error('5. Continue selling when out of stock: Must be ENABLED');
-    this.logger.error('');
-    this.logger.error('Current config:', {
-      productId: this.HIDDEN_PRODUCT_ID,
-      variantId: this.HIDDEN_VARIANT_ID
-    });
-  }
-
-  async syncCartWithAddons(workingVariantId = null) {
+    this.isProcessing = true;
+    
     try {
       this.logger.log('Syncing cart with stored addon data...');
-      
-      // Use working variant ID if found during testing
-      const variantToUse = workingVariantId || this.HIDDEN_VARIANT_ID;
-      this.logger.log('Using variant ID:', variantToUse);
       
       // Get current cart state
       const cart = await this.getCurrentCart();
@@ -183,7 +70,7 @@ export class CartPageHandler {
       }
       
       this.logger.log('Stored addon data:', addonData);
-      this.logger.log('Current cart items:', cart.items);
+      this.logger.log('Current cart items:', cart.items.length);
       
       // Calculate total addon price needed
       let totalAddonPrice = 0;
@@ -209,8 +96,7 @@ export class CartPageHandler {
       // Check if hidden product already exists in cart
       const existingHiddenItem = cart.items.find(item => 
         item.product_id.toString() === this.HIDDEN_PRODUCT_ID ||
-        item.variant_id.toString() === this.HIDDEN_VARIANT_ID ||
-        item.variant_id.toString() === variantToUse
+        item.variant_id.toString() === this.HIDDEN_VARIANT_ID
       );
       
       const neededQuantity = Math.round(totalAddonPrice / this.HIDDEN_PRODUCT_PRICE);
@@ -222,16 +108,25 @@ export class CartPageHandler {
         if (existingHiddenItem.quantity !== neededQuantity) {
           await this.updateHiddenProductQuantity(existingHiddenItem.key, neededQuantity);
         } else {
-          this.logger.log('Hidden product quantity is already correct');
+          this.logger.log('✅ Hidden product quantity is already correct');
+          this.markAsProcessed();
         }
       } else {
         this.logger.log('Adding hidden product with quantity:', neededQuantity);
-        await this.addHiddenProduct(neededQuantity, variantToUse);
+        await this.addHiddenProduct(neededQuantity);
       }
       
     } catch (error) {
       this.logger.error('Error syncing cart with addons:', error);
+    } finally {
+      this.isProcessing = false;
     }
+  }
+
+  markAsProcessed() {
+    this.hasProcessed = true;
+    sessionStorage.setItem('cart_addon_processed', Date.now().toString());
+    this.logger.log('Marked cart as processed');
   }
 
   async getCurrentCart() {
@@ -275,13 +170,12 @@ export class CartPageHandler {
     return null;
   }
 
-  async addHiddenProduct(quantity, variantId = null) {
+  async addHiddenProduct(quantity) {
     try {
-      const idToUse = variantId || this.HIDDEN_VARIANT_ID;
-      this.logger.log('Adding hidden product with quantity:', quantity, 'using ID:', idToUse);
+      this.logger.log('Adding hidden product with quantity:', quantity);
       
       const formData = new FormData();
-      formData.append('id', idToUse);
+      formData.append('id', this.HIDDEN_VARIANT_ID);
       formData.append('quantity', quantity);
       formData.append('properties[_addon_adjustment]', 'true');
       formData.append('properties[_note]', `Price adjustment for add-ons (${quantity} x £${this.HIDDEN_PRODUCT_PRICE})`);
@@ -293,20 +187,15 @@ export class CartPageHandler {
       
       if (response.ok) {
         const result = await response.json();
-        this.logger.log('Hidden product added successfully:', result);
+        this.logger.log('✅ Hidden product added successfully:', result);
+        this.markAsProcessed();
         
-        // Refresh the page to show updated cart
-        setTimeout(() => {
-          window.location.reload();
-        }, 500);
+        // Instead of refreshing, trigger cart update events
+        this.triggerCartUpdate();
+        
       } else {
         const error = await response.text();
         this.logger.error('Failed to add hidden product:', error);
-        
-        // If this was a retry with a different ID, suggest product setup fix
-        if (!variantId) {
-          this.suggestProductSetupFix();
-        }
       }
       
     } catch (error) {
@@ -331,12 +220,12 @@ export class CartPageHandler {
       
       if (response.ok) {
         const result = await response.json();
-        this.logger.log('Hidden product quantity updated successfully');
+        this.logger.log('✅ Hidden product quantity updated successfully');
+        this.markAsProcessed();
         
-        // Refresh the page to show updated cart
-        setTimeout(() => {
-          window.location.reload();
-        }, 500);
+        // Instead of refreshing, trigger cart update events
+        this.triggerCartUpdate();
+        
       } else {
         const error = await response.text();
         this.logger.error('Failed to update hidden product:', error);
@@ -344,6 +233,117 @@ export class CartPageHandler {
       
     } catch (error) {
       this.logger.error('Error updating hidden product quantity:', error);
+    }
+  }
+
+  triggerCartUpdate() {
+    // Try to trigger theme's cart update mechanisms instead of refreshing
+    this.logger.log('Triggering cart update events...');
+    
+    // Common theme cart update methods
+    const updateMethods = [
+      () => window.cartUpdated && window.cartUpdated(),
+      () => window.updateCart && window.updateCart(),
+      () => window.refreshCart && window.refreshCart(),
+      () => window.theme && window.theme.cartUpdate && window.theme.cartUpdate(),
+      () => document.dispatchEvent(new CustomEvent('cart:updated')),
+      () => document.dispatchEvent(new CustomEvent('cart:build')),
+      () => window.Shopify && window.Shopify.onCartUpdate && window.Shopify.onCartUpdate(),
+    ];
+    
+    let methodWorked = false;
+    updateMethods.forEach((method, index) => {
+      try {
+        method();
+        this.logger.log(`Cart update method ${index + 1} executed`);
+        methodWorked = true;
+      } catch (error) {
+        // Method doesn't exist or failed, that's ok
+      }
+    });
+    
+    if (!methodWorked) {
+      this.logger.log('No theme cart update methods found, showing success message');
+      this.showUpdateNotification();
+    }
+  }
+
+  showUpdateNotification() {
+    // Show a subtle notification instead of refreshing
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #2e7d32;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 6px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      z-index: 10000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      animation: slideIn 0.3s ease-out;
+    `;
+    
+    notification.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span>✅</span>
+        <span>Add-on pricing updated</span>
+        <button onclick="window.location.reload()" style="margin-left: 10px; background: rgba(255,255,255,0.2); border: none; color: white; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+          Refresh to see changes
+        </button>
+      </div>
+    `;
+    
+    // Add animation
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      notification.remove();
+      style.remove();
+    }, 5000);
+  }
+
+  async removeHiddenProduct() {
+    try {
+      const cart = await this.getCurrentCart();
+      if (!cart) return;
+      
+      const hiddenItem = cart.items.find(item => 
+        item.product_id.toString() === this.HIDDEN_PRODUCT_ID ||
+        item.variant_id.toString() === this.HIDDEN_VARIANT_ID
+      );
+      
+      if (hiddenItem) {
+        this.logger.log('Removing hidden product from cart');
+        
+        const updates = {};
+        updates[hiddenItem.key] = 0;
+        
+        await fetch('/cart/update.js', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ updates })
+        });
+        
+        this.logger.log('Hidden product removed from cart');
+        this.triggerCartUpdate();
+      }
+    } catch (error) {
+      this.logger.error('Error removing hidden product:', error);
     }
   }
 }
