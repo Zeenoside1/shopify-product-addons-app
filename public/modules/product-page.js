@@ -1,4 +1,4 @@
-// Product page addon handling
+// Product page addon handling with enhanced variant tracking
 import { ApiClient } from './api-client.js';
 import { ProductDetector } from './product-detector.js';
 import { AddonStorage } from './addon-storage.js';
@@ -24,6 +24,7 @@ export class ProductPageHandler {
     if (addons && addons.length > 0) {
       this.renderAddons(addons);
       this.initializeCartHandling();
+      this.setupCartFormInterception();
     } else {
       this.logger.log('No add-ons found for this product');
     }
@@ -65,6 +66,9 @@ export class ProductPageHandler {
         </div>
       </div>
       <div id="addon-list"></div>
+      <div class="addon-info">
+        <small>Selected add-ons will be added to your cart automatically</small>
+      </div>
     `;
 
     // Add styling if not already present
@@ -138,6 +142,14 @@ export class ProductPageHandler {
           border-radius: 4px;
           background: white;
           font-size: 14px;
+        }
+        .product-addons .addon-info {
+          margin-top: 12px;
+          padding-top: 12px;
+          border-top: 1px solid #ddd;
+          font-size: 12px;
+          color: #666;
+          text-align: center;
         }
       `;
       
@@ -227,6 +239,30 @@ export class ProductPageHandler {
 
     [...checkboxes, ...dropdowns].forEach(element => {
       element.addEventListener('change', (event) => this.handleAddonChange(event));
+    });
+  }
+
+  setupCartFormInterception() {
+    const cartForm = document.querySelector('form[action*="/cart/add"]');
+    if (!cartForm) {
+      this.logger.log('No cart form found to intercept');
+      return;
+    }
+
+    this.logger.log('Setting up cart form interception');
+    
+    cartForm.addEventListener('submit', async (event) => {
+      // Don't prevent the default submission - let it proceed
+      this.logger.log('Cart form submitting, storing addon data...');
+      
+      // Store the current addon state just before submission
+      const productId = this.productDetector.getProductId();
+      const variantId = this.getSelectedVariantId();
+      
+      if (productId && window.productAddons) {
+        this.addonStorage.storeProductAddons(productId, window.productAddons, variantId);
+        this.logger.log('Stored addon data before cart submission');
+      }
     });
   }
 
@@ -328,58 +364,7 @@ export class ProductPageHandler {
     }
 
     totalElement.textContent = `£${total.toFixed(2)}`;
-    
-    // Update the main product price display
-    this.updateMainPrice(total);
-    
-    // Try to update cart drawer if visible
-    this.updateCartDrawer(total);
-  }
-
-  updateMainPrice(addonTotal) {
-    const priceSelectors = [
-      '.price:not(.addon-price)',
-      '.product-price',
-      '.product__price', 
-      '[data-price]:not(.addon-price)',
-      '.money:not(.addon-price)',
-      '.price-item--regular'
-    ];
-    
-    priceSelectors.forEach(selector => {
-      const elements = document.querySelectorAll(selector);
-      elements.forEach(element => {
-        if (!element.getAttribute('data-original-price')) {
-          const priceText = element.textContent.replace(/[£$€,\s]/g, '');
-          const price = parseFloat(priceText);
-          if (!isNaN(price) && price > 0) {
-            element.setAttribute('data-original-price', price.toString());
-          }
-        }
-        
-        const originalPrice = parseFloat(element.getAttribute('data-original-price'));
-        if (!isNaN(originalPrice) && originalPrice > 0) {
-          const newTotal = originalPrice + addonTotal;
-          const originalText = element.textContent;
-          const currencySymbol = originalText.match(/[£$€]/)?.[0] || '£';
-          element.textContent = `${currencySymbol}${newTotal.toFixed(2)}`;
-          this.logger.log('Updated price display:', originalPrice, '+', addonTotal, '=', newTotal);
-        }
-      });
-    });
-  }
-
-  updateCartDrawer(addonTotal) {
-    const cartDrawer = document.querySelector('.cart-drawer, .drawer--cart, #cart-drawer');
-    if (cartDrawer && cartDrawer.style.display !== 'none') {
-      this.logger.log('Cart drawer detected, attempting to refresh...');
-      
-      if (typeof window.refreshCart === 'function') {
-        window.refreshCart();
-      } else if (typeof window.updateCart === 'function') {
-        window.updateCart();
-      }
-    }
+    this.logger.log('Updated addon total display:', total);
   }
 
   updateCartProperties() {
@@ -393,7 +378,7 @@ export class ProductPageHandler {
       }
     });
 
-    // Add new addon properties
+    // Add new addon properties for display in cart
     Object.entries(window.productAddons).forEach(([addonId, addon]) => {
       if (addon.selected) {
         const input = document.createElement('input');
@@ -404,7 +389,7 @@ export class ProductPageHandler {
       }
     });
 
-    // Add total addon price
+    // Add total addon price for reference
     const totalPrice = Object.values(window.productAddons)
       .filter(addon => addon.selected)
       .reduce((sum, addon) => sum + addon.price, 0);
@@ -415,48 +400,8 @@ export class ProductPageHandler {
       totalInput.name = 'properties[_Add-ons Total]';
       totalInput.value = `£${totalPrice.toFixed(2)}`;
       form.appendChild(totalInput);
-
-      // CRITICAL: Also add addon price to the actual product price
-      this.updateFormPrice(totalPrice);
-    }
-  }
-
-  updateFormPrice(addonPrice) {
-    // Find the product price input and update it
-    const priceInput = document.querySelector('form[action*="/cart/add"] input[name="price"]');
-    const variantSelect = document.querySelector('form[action*="/cart/add"] select[name="id"], form[action*="/cart/add"] input[name="id"]');
-    
-    if (variantSelect) {
-      // Get the base price from the selected variant
-      let basePrice = 0;
       
-      if (variantSelect.tagName === 'SELECT') {
-        const selectedOption = variantSelect.options[variantSelect.selectedIndex];
-        basePrice = parseFloat(selectedOption.getAttribute('data-price')) || 0;
-      } else {
-        basePrice = parseFloat(variantSelect.getAttribute('data-price')) || 0;
-      }
-      
-      // If no base price found, try to extract from display
-      if (basePrice === 0) {
-        const priceDisplay = document.querySelector('.price:not(.addon-price)');
-        if (priceDisplay) {
-          const priceMatch = priceDisplay.textContent.match(/£([\d.]+)/);
-          if (priceMatch) {
-            basePrice = parseFloat(priceMatch[1]);
-          }
-        }
-      }
-      
-      // Update the variant option with new price
-      const newPrice = basePrice + addonPrice;
-      if (variantSelect.tagName === 'SELECT') {
-        variantSelect.options[variantSelect.selectedIndex].setAttribute('data-price', newPrice);
-      } else {
-        variantSelect.setAttribute('data-price', newPrice);
-      }
-      
-      this.logger.log('Updated form price:', basePrice, '+', addonPrice, '=', newPrice);
+      this.logger.log('Added cart properties with total addon price:', totalPrice);
     }
   }
 }

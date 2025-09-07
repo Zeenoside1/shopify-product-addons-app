@@ -1,4 +1,4 @@
-// Product Add-ons - Main entry point (Browser compatible)
+// Product Add-ons - Main entry point with Hidden Product Support
 (async function() {
   'use strict';
   
@@ -30,17 +30,24 @@
       { PageDetector }, 
       { ProductPageHandler },
       { CartPageHandler },
-      { CheckoutPageHandler }
+      { CheckoutPageHandler },
+      { AddonConfig }
     ] = await Promise.all([
       import(`${HOST}/modules/logger.js`),
       import(`${HOST}/modules/page-detector.js`),
       import(`${HOST}/modules/product-page.js`),
       import(`${HOST}/modules/cart-page.js`),
-      import(`${HOST}/modules/checkout-page.js`)
+      import(`${HOST}/modules/checkout-page.js`),
+      import(`${HOST}/modules/addon-config.js`)
     ]);
     
-    const logger = new Logger('[Product Add-ons]', true);
+    const logger = new Logger('[Product Add-ons]', AddonConfig.DEBUG.ENABLED);
     logger.log('Modules loaded successfully');
+    logger.log('Configuration loaded:', {
+      hiddenProductId: AddonConfig.HIDDEN_PRODUCT.PRODUCT_ID,
+      apiHost: AddonConfig.API.HOST,
+      storageKey: AddonConfig.STORAGE.SESSION_KEY
+    });
     
     function init() {
       logger.log('Initializing...');
