@@ -209,12 +209,26 @@ export class CartPageHandler {
   }
 
   updateProductLineItem(variantId, addonInfo) {
+    this.logger.log(`🎯 Looking for cart row matching variant ${variantId} with £${addonInfo.addonPrice} addons`);
+    
     // Find the cart row for this variant
     const cartRows = document.querySelectorAll('tr.cart-item, .cart-item, .line-item');
+    this.logger.log('Found', cartRows.length, 'potential cart rows');
     
-    cartRows.forEach(row => {
+    let foundMatch = false;
+    
+    cartRows.forEach((row, index) => {
+      this.logger.log(`Checking row ${index + 1}:`, row.tagName, row.className);
+      
+      // Skip if this is the hidden product row
+      if (this.isHiddenProductRow(row)) {
+        this.logger.log(`  Skipping row ${index + 1} - it's the hidden product`);
+        return;
+      }
+      
       if (this.isRowForVariant(row, variantId)) {
-        this.logger.log(`Updating prices for variant ${variantId} with £${addonInfo.addonPrice} addons`);
+        this.logger.log(`✅ Found matching row ${index + 1} for variant ${variantId}`);
+        foundMatch = true;
         
         // Debug: Log all text content in the row to help identify price elements
         this.debugRowContents(row);
@@ -227,8 +241,28 @@ export class CartPageHandler {
         
         // Add addon details to the product description
         this.addAddonDetailsToRow(row, addonInfo.addons);
+      } else {
+        this.logger.log(`❌ Row ${index + 1} doesn't match variant ${variantId}`);
       }
     });
+    
+    if (!foundMatch) {
+      this.logger.log('⚠️ No matching row found for variant', variantId);
+      this.logger.log('Trying fallback approach - updating first non-hidden product row...');
+      
+      // Fallback: if we can't match by variant, update the first non-hidden row
+      cartRows.forEach((row, index) => {
+        if (!this.isHiddenProductRow(row) && !foundMatch) {
+          this.logger.log(`🔄 Using fallback - updating row ${index + 1}`);
+          foundMatch = true;
+          
+          this.debugRowContents(row);
+          this.updateRowUnitPrice(row, addonInfo.addonPrice);
+          this.updateRowLineTotal(row, addonInfo.addonPrice);
+          this.addAddonDetailsToRow(row, addonInfo.addons);
+        }
+      });
+    }
   }
 
   debugRowContents(row) {
