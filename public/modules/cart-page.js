@@ -170,7 +170,7 @@ export class CartPageHandler {
         this.logger.log('⚠️  No addon prices found in stored data');
         // Fallback to text parsing if no stored data
         this.logger.log('Falling back to text parsing...');
-        // this.fallbackToTextParsing(cartItems);
+        this.fallbackToTextParsing(cartItems);
       }
       
     } finally {
@@ -319,21 +319,35 @@ export class CartPageHandler {
   updateCartPriceElement(element, addonPrice) {
     const originalText = element.textContent || element.innerText || '';
     
+    this.logger.log('🔍 Trying to update price element:', {
+      originalText: originalText.trim(),
+      addonPrice: addonPrice,
+      hasOriginalAttr: element.hasAttribute('data-cart-addon-original'),
+      includesIncl: originalText.includes('(incl.'),
+      includesAddons: originalText.includes('add-ons')
+    });
+    
     // Skip if already updated
     if (originalText.includes('(incl.') || originalText.includes('add-ons') || element.hasAttribute('data-cart-addon-original')) {
+      this.logger.log('❌ Skipping element - already processed');
       return false;
     }
     
-    // Store original text
-    element.setAttribute('data-cart-addon-original', 'true');
-    
     // Extract current price
     const priceMatch = originalText.match(/(£|$|€)([\d,]+\.?\d*)/);
+    this.logger.log('🔍 Price regex match:', priceMatch);
+    
     if (priceMatch) {
       const currencySymbol = priceMatch[1];
       const currentPrice = parseFloat(priceMatch[2].replace(/,/g, ''));
       
-      if (!isNaN(currentPrice) && currentPrice > 0) {
+      this.logger.log('🔍 Parsed price details:', {
+        currencySymbol,
+        currentPrice,
+        isValidPrice: !isNaN(currentPrice)
+      });
+      
+      if (!isNaN(currentPrice)) {
         const newPrice = currentPrice + addonPrice;
         const updatedText = originalText.replace(
           priceMatch[0], 
@@ -346,9 +360,16 @@ export class CartPageHandler {
           <span class="cart-addon-info">(incl. +£${addonPrice.toFixed(2)} add-ons)</span>
         `;
         
-        this.logger.log('Updated cart price element:', currentPrice, '+', addonPrice, '=', newPrice);
+        // ONLY mark as processed if update succeeded
+        element.setAttribute('data-cart-addon-original', 'true');
+        
+        this.logger.log('✅ Successfully updated cart price element:', currentPrice, '+', addonPrice, '=', newPrice);
         return true;
+      } else {
+        this.logger.log('❌ Invalid price found:', currentPrice);
       }
+    } else {
+      this.logger.log('❌ No price pattern found in text:', originalText);
     }
     
     return false;
@@ -417,7 +438,7 @@ export class CartPageHandler {
     });
     
     // If no specific selectors worked, try a broader approach
-    if (false) { //!updated) {
+    if (!updated) {
       this.logger.log('🔍 No specific selectors worked, trying broader approach...');
       
       // Look for text containing "Estimated total" or "Total"
