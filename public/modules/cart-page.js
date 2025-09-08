@@ -692,7 +692,7 @@ export class CartPageHandler {
     }
   }
 
-  showUpdateNotification() {
+  showUpdateNotification(speed = 'normal') {
     // Show a very subtle notification
     const notification = document.createElement('div');
     notification.style.cssText = `
@@ -706,19 +706,24 @@ export class CartPageHandler {
       font-size: 13px;
       z-index: 10000;
       opacity: 0;
-      transition: opacity 0.3s ease;
+      transition: opacity 0.2s ease;
     `;
     
     notification.textContent = '✓ Add-on pricing applied';
     document.body.appendChild(notification);
     
+    // Faster animations for speed = 'fast'
+    const fadeInDelay = speed === 'fast' ? 50 : 100;
+    const showDuration = speed === 'fast' ? 1500 : 2000;
+    const fadeOutDuration = speed === 'fast' ? 200 : 300;
+    
     // Fade in
-    setTimeout(() => notification.style.opacity = '1', 100);
+    setTimeout(() => notification.style.opacity = '1', fadeInDelay);
     
     // Fade out and remove
     setTimeout(() => {
       notification.style.opacity = '0';
-      setTimeout(() => notification.remove(), 300);
-    }, 2000);
+      setTimeout(() => notification.remove(), fadeOutDuration);
+    }, showDuration);
   }
 }
